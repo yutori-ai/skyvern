@@ -80,6 +80,8 @@ from skyvern.forge.sdk.api.llm.api_handler_factory import LLMAPIHandlerFactory, 
 from skyvern.forge.sdk.api.llm.config_registry import LLMConfigRegistry
 from skyvern.forge.sdk.api.llm.exceptions import LLM_PROVIDER_ERROR_RETRYABLE_TASK_TYPE, LLM_PROVIDER_ERROR_TYPE
 from skyvern.forge.sdk.api.llm.ui_tars_llm_caller import UITarsLLMCaller
+from skyvern.forge.sdk.api.llm.yutori_n1_llm_caller import YutoriN1LLMCaller
+from skyvern.forge.sdk.api.llm.yutori_n1_response import parse_and_convert_yutori_n1_actions
 from skyvern.forge.sdk.api.llm.vertex_cache_manager import get_cache_manager
 from skyvern.forge.sdk.artifact.manager import BulkArtifactCreationRequest
 from skyvern.forge.sdk.artifact.models import ArtifactType
@@ -489,9 +491,20 @@ class ForgeAgent:
                     ui_tars_llm_caller.initialize_conversation(task)
                     llm_caller = ui_tars_llm_caller
 
+            if engine == RunEngine.yutori_n1 and not llm_caller:
+                llm_caller = LLMCallerManager.get_llm_caller(task.task_id)
+                if not llm_caller:
+                    yutori_n1_caller = YutoriN1LLMCaller(
+                        api_key=settings.YUTORI_N1_API_KEY or "",
+                        model=settings.YUTORI_N1_MODEL,
+                        base_url=settings.YUTORI_N1_API_BASE,
+                    )
+                    yutori_n1_caller.initialize_conversation(task)
+                    llm_caller = yutori_n1_caller
+
             # TODO: remove the code after migrating everything to llm callers
             # currently, only anthropic cua and ui_tars tasks use llm_caller
-            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars] and llm_caller:
+            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars, RunEngine.yutori_n1] and llm_caller:
                 LLMCallerManager.set_llm_caller(task.task_id, llm_caller)
 
             step, detailed_output = await self.agent_step(
@@ -1080,6 +1093,18 @@ class ForgeAgent:
             ):
                 assert llm_caller is not None
                 actions = await self._generate_ui_tars_actions(
+                    task=task,
+                    step=step,
+                    scraped_page=scraped_page,
+                    llm_caller=llm_caller,
+                )
+            elif engine == RunEngine.yutori_n1 and not await app.EXPERIMENTATION_PROVIDER.is_feature_enabled_cached(
+                "DISABLE_YUTORI_N1_CUA",
+                task.workflow_run_id or task.task_id,
+                properties={"organization_id": task.organization_id},
+            ):
+                assert llm_caller is not None
+                actions = await self._generate_yutori_n1_actions(
                     task=task,
                     step=step,
                     scraped_page=scraped_page,
@@ -1918,6 +1943,26 @@ class ForgeAgent:
         )
 
         return actions
+
+    async def _generate_yutori_n1_actions(
+        self,
+        task: Task,
+        step: Step,
+        scraped_page: ScrapedPage,
+        llm_caller: LLMCaller,
+    ) -> list[Action]:
+        if not isinstance(llm_caller, YutoriN1LLMCaller):
+            raise ValueError(f"Expected YutoriN1LLMCaller, got {type(llm_caller)}")
+        if not scraped_page.screenshots:
+            raise ValueError("No screenshots found for Yutori N1 action generation")
+        llm_caller.add_screenshot(scraped_page.screenshots[0])
+        response = await llm_caller.generate_response(step)
+        window_dimension = (
+            cast(Resolution, scraped_page.window_dimension)
+            if scraped_page.window_dimension
+            else Resolution(width=1920, height=1080)
+        )
+        return parse_and_convert_yutori_n1_actions(response, window_dimension.width, window_dimension.height)
 
     async def _speculate_next_step_plan(
         self,
