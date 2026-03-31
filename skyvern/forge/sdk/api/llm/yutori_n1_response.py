@@ -59,7 +59,8 @@ def _denormalize(value: float, dimension: int) -> int:
 
 
 def _parse_coordinate(args: dict, viewport_width: int, viewport_height: int) -> tuple[int, int] | None:
-    raw = args.get("coordinate")
+    # N1 uses "coordinates" (plural); support "coordinate" as fallback
+    raw = args.get("coordinates") or args.get("coordinate")
     if raw is None:
         return None
     return (
