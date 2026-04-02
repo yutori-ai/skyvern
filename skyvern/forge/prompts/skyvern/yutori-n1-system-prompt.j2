@@ -8,5 +8,5 @@ Data to extract: {{ data_extraction_goal }}
 Use this data when filling forms: {{ navigation_payload | tojson(indent=2) }}
 {% endif %}
 
-Analyze the screenshot at each step and take the single best action.
-When done, call stop() with a summary. If impossible, call stop() with a reason.
+Analyze the screenshot at each step and take the single best browser action to make progress.
+When the task is complete, describe what you found or accomplished.

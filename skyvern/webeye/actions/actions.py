@@ -209,6 +209,8 @@ class Action(BaseModel):
                 return ReloadPageAction.model_validate(value)
             elif action_type is ActionType.GOTO_URL:
                 return GotoUrlAction.model_validate(value)
+            elif action_type is ActionType.GO_BACK:
+                return GoBackAction.model_validate(value)
             elif action_type is ActionType.CLOSE_PAGE:
                 return ClosePageAction.model_validate(value)
             else:
@@ -366,6 +368,10 @@ class GotoUrlAction(Action):
     action_type: ActionType = ActionType.GOTO_URL
     url: str
     is_magic_link: bool = False  # if True, shouldn't go to url directly when replaying the cache
+
+
+class GoBackAction(Action):
+    action_type: ActionType = ActionType.GO_BACK
 
 
 class MoveAction(Action):

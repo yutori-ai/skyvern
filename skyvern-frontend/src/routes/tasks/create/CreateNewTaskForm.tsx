@@ -44,6 +44,7 @@ import { ProxySelector } from "@/components/ProxySelector";
 import { Switch } from "@/components/ui/switch";
 import { MAX_SCREENSHOT_SCROLLS_DEFAULT } from "@/routes/workflows/editor/nodes/Taskv2Node/types";
 import { TestWebhookDialog } from "@/components/TestWebhookDialog";
+import { RunEngineSelector } from "@/components/EngineSelector";
 type Props = {
   initialValues: CreateNewTaskFormValues;
 };
@@ -111,6 +112,7 @@ function CreateNewTaskForm({ initialValues }: Props) {
     "base",
   ]);
   const [showAdvancedBaseContent, setShowAdvancedBaseContent] = useState(false);
+  const [selectedEngine, setSelectedEngine] = useState<RunEngine>(RunEngine.YutoriN1);
 
   const { data: organizations } = useQuery<Array<OrganizationApiResponse>>({
     queryKey: ["organizations"],
@@ -138,15 +140,18 @@ function CreateNewTaskForm({ initialValues }: Props) {
 
   const mutation = useMutation({
     mutationFn: async (formValues: CreateNewTaskFormValues) => {
-      const taskRequest = createTaskRequestObject(formValues);
       const client = await getClient(credentialGetter);
       const includeOverrideHeader =
         formValues.maxStepsOverride !== null &&
         formValues.maxStepsOverride !== MAX_STEPS_DEFAULT;
+      const payload = buildTaskRunPayload(
+        createTaskRequestObject(formValues),
+        selectedEngine,
+      );
       return client.post<
-        ReturnType<typeof createTaskRequestObject>,
-        { data: { task_id: string } }
-      >("/tasks", taskRequest, {
+        typeof payload,
+        { data: { run_id: string } }
+      >(`${runsApiBaseUrl}/run/tasks`, payload, {
         ...(includeOverrideHeader && {
           headers: {
             "x-max-steps-override": formValues.maxStepsOverride,
@@ -181,11 +186,11 @@ function CreateNewTaskForm({ initialValues }: Props) {
       toast({
         variant: "success",
         title: "Task Created",
-        description: `${response.data.task_id} created successfully.`,
+        description: `${response.data.run_id} created successfully.`,
         action: (
           <ToastAction altText="View">
             <Button asChild>
-              <Link to={`/tasks/${response.data.task_id}`}>View</Link>
+              <Link to={`/runs/${response.data.run_id}`}>View</Link>
             </Button>
           </ToastAction>
         ),
@@ -754,7 +759,12 @@ function CreateNewTaskForm({ initialValues }: Props) {
           )}
         </TaskFormSection>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex items-center justify-end gap-3">
+          <RunEngineSelector
+            value={selectedEngine}
+            onChange={setSelectedEngine}
+            className="w-40"
+          />
           <CopyApiCommandDropdown
             getOptions={() => {
               const formValues = form.getValues();
@@ -778,7 +788,7 @@ function CreateNewTaskForm({ initialValues }: Props) {
                 url: `${runsApiBaseUrl}/run/tasks`,
                 body: buildTaskRunPayload(
                   createTaskRequestObject(formValues),
-                  RunEngine.SkyvernV1,
+                  selectedEngine,
                 ),
                 headers,
               } satisfies ApiCommandOptions;

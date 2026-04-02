@@ -6,7 +6,6 @@ from typing import Any
 import structlog
 from openai import AsyncOpenAI
 
-from skyvern.forge.prompts import prompt_engine
 from skyvern.forge.sdk.models import Step
 from skyvern.forge.sdk.schemas.tasks import Task
 
@@ -79,19 +78,9 @@ class YutoriN1LLMCaller:
         return response
 
     def _build_system_prompt(self) -> str | None:
-        if not self._task:
-            return None
-        try:
-            return prompt_engine.load_prompt(
-                "yutori-n1-system-prompt",
-                navigation_goal=self._task.navigation_goal,
-                data_extraction_goal=self._task.data_extraction_goal,
-                navigation_payload=self._task.navigation_payload,
-                error_code_mapping_str=str(self._task.error_code_mapping) if self._task.error_code_mapping else None,
-            )
-        except Exception:
-            LOG.warning("Failed to load yutori-n1-system-prompt; proceeding without system prompt")
-            return None
+        # N1 is trained to handle tasks from the user message directly.
+        # A system prompt overrides N1's tool-calling behavior, so we don't use one.
+        return None
 
     def _append_assistant_message(self, message: Any) -> None:
         msg: dict[str, Any] = {"role": "assistant", "content": message.content or ""}

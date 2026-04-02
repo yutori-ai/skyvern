@@ -24,6 +24,7 @@ class ActionType(StrEnum):
     VERIFICATION_CODE = "verification_code"
 
     GOTO_URL = "goto_url"
+    GO_BACK = "go_back"
     SCROLL = "scroll"
     KEYPRESS = "keypress"
     MOVE = "move"

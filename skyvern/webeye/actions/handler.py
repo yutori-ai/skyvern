@@ -2410,6 +2410,17 @@ async def handle_goto_url_action(
     return [ActionSuccess()]
 
 
+async def handle_go_back_action(
+    action: actions.GoBackAction,
+    page: Page,
+    scraped_page: ScrapedPage,
+    task: Task,
+    step: Step,
+) -> list[ActionResult]:
+    await page.go_back(timeout=settings.BROWSER_LOADING_TIMEOUT_MS)
+    return [ActionSuccess()]
+
+
 @traced()
 async def handle_close_page_action(
     action: actions.ClosePageAction,
@@ -2442,6 +2453,7 @@ ActionHandler.register_action_type(ActionType.VERIFICATION_CODE, handle_verifica
 ActionHandler.register_action_type(ActionType.LEFT_MOUSE, handle_left_mouse_action)
 ActionHandler.register_action_type(ActionType.GOTO_URL, handle_goto_url_action)
 ActionHandler.register_action_type(ActionType.CLOSE_PAGE, handle_close_page_action)
+ActionHandler.register_action_type(ActionType.GO_BACK, handle_go_back_action)
 
 
 def get_actual_value_of_parameter_if_secret(workflow_run_id: str, parameter: str) -> Any:

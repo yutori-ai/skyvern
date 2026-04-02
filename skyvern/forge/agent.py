@@ -1955,6 +1955,8 @@ class ForgeAgent:
             raise ValueError(f"Expected YutoriN1LLMCaller, got {type(llm_caller)}")
         if not scraped_page.screenshots:
             raise ValueError("No screenshots found for Yutori N1 action generation")
+        if step.order == 0 and step.retry_index == 0:
+            llm_caller.initialize_conversation(task)
         llm_caller.add_screenshot(scraped_page.screenshots[0])
         response = await llm_caller.generate_response(step)
         window_dimension = (
@@ -1962,7 +1964,7 @@ class ForgeAgent:
             if scraped_page.window_dimension
             else Resolution(width=1920, height=1080)
         )
-        return parse_and_convert_yutori_n1_actions(response, window_dimension.width, window_dimension.height)
+        return parse_and_convert_yutori_n1_actions(response, window_dimension["width"], window_dimension["height"], task=task, step=step)
 
     async def _speculate_next_step_plan(
         self,
@@ -3451,22 +3453,32 @@ class ForgeAgent:
             task_id=task.task_id,
             organization_id=task.organization_id,
         )
+        complete_action_content: str | None = None
         for step in reversed(steps):
             if step.status != StepStatus.completed:
                 continue
             if not step.output or not step.output.actions_and_results:
                 continue
             for action, action_results in step.output.actions_and_results:
-                if action.action_type != ActionType.EXTRACT:
-                    continue
+                if action.action_type == ActionType.EXTRACT:
+                    for action_result in action_results:
+                        if action_result.success:
+                            LOG.info(
+                                "Extracted information for task",
+                                extracted_information=action_result.data,
+                            )
+                            return action_result.data
+                # For CUA-style engines (e.g. yutori_n1), the model returns its answer
+                # inside the CompleteAction's data_extraction_goal field. Surface that
+                # as extracted_information when no EXTRACT action result is found.
+                if action.action_type == ActionType.COMPLETE and complete_action_content is None:
+                    content = getattr(action, "data_extraction_goal", None)
+                    if content and content != "Task completed (unknown action types)":
+                        complete_action_content = content
 
-                for action_result in action_results:
-                    if action_result.success:
-                        LOG.info(
-                            "Extracted information for task",
-                            extracted_information=action_result.data,
-                        )
-                        return action_result.data
+        if complete_action_content:
+            LOG.info("Using CompleteAction content as extracted information", task_id=task.task_id)
+            return complete_action_content
 
         if task.data_extraction_goal:
             LOG.warning(

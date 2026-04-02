@@ -43,6 +43,12 @@ const allEngineOptions: Array<EngineOption> = [
     value: RunEngine.AnthropicCua,
     label: "Anthropic CUA",
   },
+  {
+    value: RunEngine.YutoriN1,
+    label: "Yutori N1",
+    badge: "New",
+    badgeVariant: "default",
+  },
 ];
 
 // Default engines for blocks that don't support V2 mode
@@ -50,6 +56,7 @@ const defaultEngines: Array<RunEngine> = [
   RunEngine.SkyvernV1,
   RunEngine.OpenaiCua,
   RunEngine.AnthropicCua,
+  RunEngine.YutoriN1,
 ];
 
 function BadgeLabel({ option }: { option: EngineOption }) {
