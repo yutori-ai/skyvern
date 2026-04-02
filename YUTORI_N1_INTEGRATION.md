@@ -89,6 +89,8 @@ N1 calls `go_back` naturally (e.g., after visiting an external link, to return t
 
 Skyvern overlays its own element-detection annotations (bounding boxes, labels) on screenshots before sending them to the model. N1 was trained on raw browser screenshots. The effect on coordinate accuracy is unknown but worth investigating — especially whether N1's clicks land in the right place when the screenshot has Skyvern's visual overlay.
 
+**Note (Devi):** This was surprising — we should verify with the Skyvern team whether this is intentional for CUA engines or whether raw screenshots can be requested. It may be the root cause of some of N1's navigation misfires.
+
 **Question for the N1 team:** Has N1 been tested with annotated screenshots? Does it handle them gracefully or should Skyvern send raw screenshots when using N1?
 
 ### Issue 4: Coordinate space — full browser window vs. page content
