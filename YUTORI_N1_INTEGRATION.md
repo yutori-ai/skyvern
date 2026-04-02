@@ -53,6 +53,8 @@ These changes are cosmetic / for local testing convenience and are not part of t
 - `skyvern-frontend/src/routes/tasks/create/CreateNewTaskForm.tsx` — Changed default engine to N1 for local testing.
 - `skyvern-frontend/src/util/taskRunPayload.ts` — Fixed a bug where `"null"` string was being appended to the navigation goal.
 
+**Known issue:** The Run button in the frontend does not currently work for N1 tasks. Tasks must be submitted via the API directly (see Running Locally below). The button either submits with the wrong engine or does nothing — this has not been fully debugged.
+
 ---
 
 ## How N1 Is Invoked
@@ -87,9 +89,7 @@ N1 calls `go_back` naturally (e.g., after visiting an external link, to return t
 
 ### Issue 3: Skyvern sends annotated screenshots; N1 expects raw
 
-Skyvern overlays its own element-detection annotations (bounding boxes, labels) on screenshots before sending them to the model. N1 was trained on raw browser screenshots. The effect on coordinate accuracy is unknown but worth investigating — especially whether N1's clicks land in the right place when the screenshot has Skyvern's visual overlay.
-
-**Note (Devi):** This was surprising — we should verify with the Skyvern team whether this is intentional for CUA engines or whether raw screenshots can be requested. It may be the root cause of some of N1's navigation misfires.
+Skyvern overlays its own element-detection annotations (bounding boxes, labels) on screenshots before sending them to the model. N1 was trained on raw browser screenshots. The effect on coordinate accuracy is unknown but worth investigating — especially whether N1's clicks land in the right place when the screenshot has Skyvern's visual overlay. Should verify with the Skyvern team whether raw screenshots can be requested for CUA engines.
 
 **Question for the N1 team:** Has N1 been tested with annotated screenshots? Does it handle them gracefully or should Skyvern send raw screenshots when using N1?
 
@@ -115,7 +115,7 @@ python -m uvicorn skyvern.forge.api_app:create_api_app \
   --app-dir /path/to/skyvern
 ```
 
-Submit a task:
+Submit a task (use the API directly — the frontend Run button is not working):
 
 ```bash
 curl -X POST http://localhost:8000/v1/run/tasks \
