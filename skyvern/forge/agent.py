@@ -2593,9 +2593,8 @@ class ForgeAgent:
             draw_boxes = False
             scroll = False
 
-        if engine == RunEngine.yutori_n1:
-            page = await browser_state.must_get_working_page()
-            await page.set_viewport_size({"width": 1280, "height": 800})
+        # N1 was trained on 1280x800. To match, set BROWSER_WIDTH=1280 BROWSER_HEIGHT=800
+        # in .env. set_viewport_size() doesn't work on Playwright persistent contexts.
 
         return await browser_state.scrape_website(
             url=task.url,

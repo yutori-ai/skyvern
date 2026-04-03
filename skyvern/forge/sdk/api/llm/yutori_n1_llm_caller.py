@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import base64
+import json
+import logging
 from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
+
+_file_log = logging.getLogger("n1_skyvern")
+if not _file_log.handlers:
+    _h = logging.FileHandler("/tmp/n1_skyvern.log")
+    _h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    _file_log.addHandler(_h)
+    _file_log.setLevel(logging.DEBUG)
 
 from skyvern.forge.sdk.models import Step
 from skyvern.forge.sdk.schemas.tasks import Task
@@ -108,15 +117,29 @@ class YutoriN1LLMCaller:
             max_completion_tokens=4096,
         )
 
-        request_id = getattr(response, "request_id", None) or (
-            response.model_extra.get("request_id") if response.model_extra else None
+        request_id = (
+            getattr(response, "request_id", None)
+            or (response.model_extra.get("request_id") if response.model_extra else None)
+        )
+        finish_reason = response.choices[0].finish_reason
+        tool_names = (
+            [tc.function.name for tc in response.choices[0].message.tool_calls]
+            if response.choices[0].message.tool_calls
+            else []
         )
         LOG.info(
             "Yutori N1 response received",
             step_order=step.order,
             request_id=request_id,
-            finish_reason=response.choices[0].finish_reason,
+            finish_reason=finish_reason,
         )
+        _file_log.info(json.dumps({
+            "step_order": step.order,
+            "request_id": request_id,
+            "finish_reason": finish_reason,
+            "tool_calls": tool_names,
+            "model_extra_keys": list(response.model_extra.keys()) if response.model_extra else [],
+        }))
 
         self._append_assistant_message(response.choices[0].message)
         return response

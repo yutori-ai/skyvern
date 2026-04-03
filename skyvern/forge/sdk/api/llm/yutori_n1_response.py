@@ -185,7 +185,9 @@ def _convert_tool_call(
 
     if action_type == YutoriN1ActionType.SCROLL:
         direction = args.get("direction", "down")
-        amount = int(args.get("amount", 3))
+        # N1 scroll amounts are small integers (e.g. 3). Multiply by 100 to get
+        # pixel values consistent with how the internal Yutori N1 navigator handles scroll.
+        amount = int(args.get("amount", 3)) * 100
         if direction == "up":
             return ScrollAction(x=x, y=y, scroll_x=0, scroll_y=-amount, **base_params)
         if direction == "down":
