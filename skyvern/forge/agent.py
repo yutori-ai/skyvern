@@ -2593,6 +2593,10 @@ class ForgeAgent:
             draw_boxes = False
             scroll = False
 
+        if engine == RunEngine.yutori_n1:
+            page = await browser_state.must_get_working_page()
+            await page.set_viewport_size({"width": 1280, "height": 800})
+
         return await browser_state.scrape_website(
             url=task.url,
             cleanup_element_tree=app.AGENT_FUNCTION.cleanup_element_tree_factory(task=task, step=step),

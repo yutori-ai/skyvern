@@ -66,21 +66,35 @@ class YutoriN1LLMCaller:
         LOG.debug("Added screenshot to Yutori N1 conversation", total_messages=len(self._messages))
 
     def _build_trimmed_messages(self) -> list[dict[str, Any]]:
-        """Return conversation trimmed to the task message + last N screenshot turns."""
+        """Return conversation with images stripped from all but the last N screenshot turns.
+
+        Older turns keep their text content so N1 retains action history context.
+        """
         if not self._messages:
             return []
 
-        # First message always contains the task description — keep it.
-        task_message = self._messages[0]
+        # Identify indices of user messages that carry a screenshot (image_url content).
+        screenshot_indices = [
+            i for i, msg in enumerate(self._messages)
+            if msg["role"] == "user"
+            and isinstance(msg.get("content"), list)
+            and any(item.get("type") == "image_url" for item in msg["content"])
+        ]
 
-        # Remaining messages are interleaved user(screenshot)/assistant(tool_calls) pairs.
-        rest = self._messages[1:]
+        # The most recent N screenshot messages keep their images; older ones get images stripped.
+        keep_images = set(screenshot_indices[-YUTORI_N1_MAX_SCREENSHOT_TURNS:])
 
-        # Keep only the last YUTORI_N1_MAX_SCREENSHOT_TURNS * 2 messages (user + assistant each).
-        max_tail = YUTORI_N1_MAX_SCREENSHOT_TURNS * 2
-        trimmed_tail = rest[-max_tail:] if len(rest) > max_tail else rest
+        result = []
+        for i, msg in enumerate(self._messages):
+            if i not in keep_images and msg["role"] == "user" and isinstance(msg.get("content"), list):
+                text_only = [item for item in msg["content"] if item.get("type") != "image_url"]
+                if not text_only:
+                    continue
+                result.append({**msg, "content": text_only})
+            else:
+                result.append(msg)
 
-        return [task_message] + trimmed_tail
+        return result
 
     async def generate_response(self, step: Step) -> Any:
         system_prompt = self._build_system_prompt()
