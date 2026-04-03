@@ -14,6 +14,10 @@ LOG = structlog.get_logger()
 YUTORI_N1_DEFAULT_MODEL = "n1-latest"
 YUTORI_N1_BASE_URL = "https://api.yutori.com/v1"
 
+# N1 reasons over a sliding window of recent screenshots; sending the full history
+# wastes bandwidth without improving results. Each "turn" is one user+assistant pair.
+YUTORI_N1_MAX_SCREENSHOT_TURNS = 2
+
 
 class YutoriN1LLMCaller:
     """Multi-turn conversation manager for the Yutori N1 computer-use model.
@@ -61,9 +65,26 @@ class YutoriN1LLMCaller:
         self._messages.append({"role": "user", "content": user_content})
         LOG.debug("Added screenshot to Yutori N1 conversation", total_messages=len(self._messages))
 
+    def _build_trimmed_messages(self) -> list[dict[str, Any]]:
+        """Return conversation trimmed to the task message + last N screenshot turns."""
+        if not self._messages:
+            return []
+
+        # First message always contains the task description — keep it.
+        task_message = self._messages[0]
+
+        # Remaining messages are interleaved user(screenshot)/assistant(tool_calls) pairs.
+        rest = self._messages[1:]
+
+        # Keep only the last YUTORI_N1_MAX_SCREENSHOT_TURNS * 2 messages (user + assistant each).
+        max_tail = YUTORI_N1_MAX_SCREENSHOT_TURNS * 2
+        trimmed_tail = rest[-max_tail:] if len(rest) > max_tail else rest
+
+        return [task_message] + trimmed_tail
+
     async def generate_response(self, step: Step) -> Any:
         system_prompt = self._build_system_prompt()
-        messages: list[Any] = list(self._messages)
+        messages: list[Any] = self._build_trimmed_messages()
         if system_prompt:
             messages = [{"role": "system", "content": system_prompt}] + messages
 
@@ -73,8 +94,17 @@ class YutoriN1LLMCaller:
             max_completion_tokens=4096,
         )
 
+        request_id = getattr(response, "request_id", None) or (
+            response.model_extra.get("request_id") if response.model_extra else None
+        )
+        LOG.info(
+            "Yutori N1 response received",
+            step_order=step.order,
+            request_id=request_id,
+            finish_reason=response.choices[0].finish_reason,
+        )
+
         self._append_assistant_message(response.choices[0].message)
-        LOG.debug("Yutori N1 response received", step_order=step.order)
         return response
 
     def _build_system_prompt(self) -> str | None:
