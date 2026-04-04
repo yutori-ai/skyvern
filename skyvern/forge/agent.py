@@ -1957,14 +1957,16 @@ class ForgeAgent:
             raise ValueError("No screenshots found for Yutori N1 action generation")
         if step.order == 0 and step.retry_index == 0:
             llm_caller.initialize_conversation(task)
-        llm_caller.add_screenshot(scraped_page.screenshots[0])
+        llm_caller.add_tool_result(scraped_page.screenshots[0], scraped_page.url)
         response = await llm_caller.generate_response(step)
         window_dimension = (
             cast(Resolution, scraped_page.window_dimension)
             if scraped_page.window_dimension
-            else Resolution(width=1920, height=1080)
+            else Resolution(width=settings.BROWSER_WIDTH, height=settings.BROWSER_HEIGHT)
         )
-        return parse_and_convert_yutori_n1_actions(response, window_dimension["width"], window_dimension["height"], task=task, step=step)
+        return parse_and_convert_yutori_n1_actions(
+            response, window_dimension["width"], window_dimension["height"], task=task, step=step,
+        )
 
     async def _speculate_next_step_plan(
         self,
@@ -2592,9 +2594,6 @@ class ForgeAgent:
             max_screenshot_number = 1
             draw_boxes = False
             scroll = False
-
-        # N1 was trained on 1280x800. To match, set BROWSER_WIDTH=1280 BROWSER_HEIGHT=800
-        # in .env. set_viewport_size() doesn't work on Playwright persistent contexts.
 
         return await browser_state.scrape_website(
             url=task.url,
