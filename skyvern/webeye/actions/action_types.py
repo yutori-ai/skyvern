@@ -6,7 +6,7 @@ class ActionType(StrEnum):
     INPUT_TEXT = "input_text"
     UPLOAD_FILE = "upload_file"
 
-    # This action is not used in the current implementation. Click actions are used instead."
+    # This action is not used in the current implementation. Click actions are used instead.
     DOWNLOAD_FILE = "download_file"
 
     SELECT_OPTION = "select_option"
