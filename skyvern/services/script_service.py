@@ -47,8 +47,6 @@ from skyvern.forge.sdk.schemas.tasks import Task, TaskOutput, TaskStatus
 from skyvern.forge.sdk.schemas.workflow_runs import WorkflowRunBlock
 from skyvern.forge.sdk.workflow.loop_download_filter import (
     filter_downloaded_files_for_current_iteration as _filter_downloaded_files_for_current_iteration,
-)
-from skyvern.forge.sdk.workflow.loop_download_filter import (
     to_downloaded_file_signature as _to_downloaded_file_signature,
 )
 from skyvern.forge.sdk.workflow.models.block import (
