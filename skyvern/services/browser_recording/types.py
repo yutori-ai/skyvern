@@ -4,7 +4,6 @@ A types module for browser recording actions and events.
 
 import enum
 import typing as t
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -190,18 +189,18 @@ class ExfiltratedEventConsoleParams(BaseModel):
 
 
 class ExfiltratedCdpEvent(BaseModel):
-    kind: Literal["exfiltrated-event"]
+    kind: t.Literal["exfiltrated-event"]
     event_name: str
     params: ExfiltratedEventCdpParams
-    source: Literal["cdp"]
+    source: t.Literal["cdp"]
     timestamp: float
 
 
 class ExfiltratedConsoleEvent(BaseModel):
-    kind: Literal["exfiltrated-event"]
+    kind: t.Literal["exfiltrated-event"]
     event_name: str
     params: ExfiltratedEventConsoleParams
-    source: Literal["console"]
+    source: t.Literal["console"]
     timestamp: float
 
 
