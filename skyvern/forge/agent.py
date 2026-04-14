@@ -1962,8 +1962,6 @@ class ForgeAgent:
             llm_caller.initialize_conversation(task)
 
         # Detect last step — send stop-and-summarize instead of normal tool result.
-        # Use the same priority chain as the max-steps enforcement in
-        # _handle_completed_step_with_parallel_verification.
         context = skyvern_context.current()
         override_max_steps = context.max_steps_override if context else None
         max_steps = (
@@ -1975,8 +1973,10 @@ class ForgeAgent:
 
         if is_last_step:
             llm_caller.add_stop_and_summarize(scraped_page.screenshots[0], scraped_page.url)
+        elif not llm_caller.message_history:
+            llm_caller.add_initial_message(scraped_page.screenshots[0])
         else:
-            llm_caller.add_tool_result(scraped_page.screenshots[0], scraped_page.url)
+            llm_caller.flush_pending_tool_results(scraped_page.screenshots[0], scraped_page.url)
 
         window_dimension = (
             cast(Resolution, scraped_page.window_dimension)
@@ -1998,49 +1998,46 @@ class ForgeAgent:
             if not dom_tool_calls:
                 break  # Only browser actions — proceed to conversion
 
-            # Execute only DOM tool calls inline. Browser action tool calls
-            # are left for add_tool_result on the next step via _pending_tool_calls.
+            # Execute DOM tool calls inline and set their results on the caller.
+            # Browser action tool calls keep result=None and will use the
+            # _describe_browser_action fallback when flushed on the next step.
             page = await scraped_page._browser_state.get_working_page()
-            dom_tc_ids = set()
 
             for tc in dom_tool_calls:
                 tc_name = tc["function"]["name"]
                 args = _json.loads(tc["function"]["arguments"])
                 tc_id = tc["id"]
-                dom_tc_ids.add(tc_id)
+
                 if tc_name == "extract_elements":
                     result = await evaluate_tool_script(page, EXTRACT_ELEMENTS_SCRIPT, args.get("filter", "visible"))
-                    llm_caller.add_dom_tool_result(tc_id, result.get("pageContent", str(result)))
+                    llm_caller.set_tool_result(tc_id, result.get("pageContent", str(result)))
                 elif tc_name == "find":
                     text = args.get("text", "")
                     result = await evaluate_tool_script(page, FIND_SCRIPT, text)
                     dom_tree = result.get("pageContent", str(result))
                     lines = [line for line in dom_tree.split("\n") if text.lower() in line.lower()]
                     if lines:
-                        llm_caller.add_dom_tool_result(tc_id, f"Found {len(lines)} element(s) matching \"{text}\":\n" + "\n".join(lines[:20]))
+                        llm_caller.set_tool_result(tc_id, f"Found {len(lines)} element(s) matching \"{text}\":\n" + "\n".join(lines[:20]))
                     else:
-                        llm_caller.add_dom_tool_result(tc_id, f'No elements matching "{text}" found on the page.')
+                        llm_caller.set_tool_result(tc_id, f'No elements matching "{text}" found on the page.')
                 elif tc_name == "set_element_value":
                     result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, args.get("ref", ""), args.get("value", ""))
-                    llm_caller.add_dom_tool_result(tc_id, result.get("message", str(result)))
+                    llm_caller.set_tool_result(tc_id, result.get("message", str(result)))
                 elif tc_name == "execute_js":
                     js_code = args.get("text", "")
                     raw = await page.evaluate(js_code)
                     if raw is None:
-                        llm_caller.add_dom_tool_result(tc_id, "undefined")
+                        llm_caller.set_tool_result(tc_id, "undefined")
                     elif isinstance(raw, (dict, list)):
-                        llm_caller.add_dom_tool_result(tc_id, _json.dumps(raw, indent=2))
+                        llm_caller.set_tool_result(tc_id, _json.dumps(raw, indent=2))
                     else:
-                        llm_caller.add_dom_tool_result(tc_id, str(raw))
+                        llm_caller.set_tool_result(tc_id, str(raw))
 
-            # Remove DOM tool calls from _pending_tool_calls so add_tool_result
-            # on the next step doesn't create duplicate responses for them.
-            llm_caller._pending_tool_calls = [
-                tc for tc in llm_caller._pending_tool_calls if tc["id"] not in dom_tc_ids
-            ]
+            # Flush DOM tool results into conversation. Browser actions stay pending
+            # for flush_pending_tool_results on the next step.
+            llm_caller.flush_pending_tool_results(scraped_page.screenshots[0], scraped_page.url)
 
-            # If there were also browser actions mixed in, break and convert them.
-            # The remaining browser _pending_tool_calls will be flushed by add_tool_result.
+            # If there were also browser actions, break and convert them
             browser_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] not in EXPANDED_TOOL_ACTIONS]
             if browser_tool_calls:
                 break

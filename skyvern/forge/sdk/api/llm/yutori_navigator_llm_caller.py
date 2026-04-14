@@ -13,25 +13,15 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 from yutori.navigator import format_stop_and_summarize, screenshot_to_data_url
 
-from dataclasses import dataclass, field
-
 from skyvern.forge.sdk.api.llm.api_handler_factory import LLMCaller
 from skyvern.forge.sdk.models import Step
 from skyvern.forge.sdk.schemas.tasks import Task
-
-
-@dataclass
-class NavigatorResponse:
-    """Normalized response from Yutori Navigator for use in the agent loop."""
-    content: str = ""
-    finish_reason: str | None = None
-    tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    """Each tool_call is {"id": ..., "function": {"name": ..., "arguments": ...}}"""
 
 _file_log = logging.getLogger("yutori_skyvern")
 if not _file_log.handlers:
@@ -43,8 +33,18 @@ if not _file_log.handlers:
 LOG = structlog.get_logger()
 
 
-def _describe_action_result(name: str, arguments_json: str) -> str:
-    """Generate a descriptive tool result string matching the SDK's navigator example."""
+@dataclass
+class NavigatorResponse:
+    """Normalized response from Yutori Navigator for use in the agent loop."""
+
+    content: str = ""
+    finish_reason: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    """Each tool_call is {"id": ..., "function": {"name": ..., "arguments": ...}}"""
+
+
+def _describe_browser_action(name: str, arguments_json: str) -> str:
+    """Generate a descriptive result for a browser action matching the SDK's navigator example."""
     try:
         args = json.loads(arguments_json)
     except (json.JSONDecodeError, TypeError):
@@ -87,15 +87,21 @@ class YutoriNavigatorLLMCaller(LLMCaller):
     """Yutori Navigator LLM caller extending Skyvern's LLMCaller base class.
 
     Manages multi-turn conversation via self.message_history (inherited).
-    API calls route through the base class → _dispatch_llm_call() → _call_yutori_navigator()
+    API calls route through the base class -> _dispatch_llm_call() -> _call_yutori_navigator()
     in api_handler_factory.py, giving us artifact persistence, cost tracking, and
     error handling for free.
+
+    Each pending tool call carries its own result string. Browser actions get a
+    descriptive result at parse time; DOM tools get their result set by the agent
+    loop after execution. flush_pending_tool_results() appends them all to the
+    message history with the screenshot on the last one.
     """
 
     def __init__(self, llm_key: str, screenshot_scaling_enabled: bool = False):
         super().__init__(llm_key, screenshot_scaling_enabled)
         self._conversation_initialized = False
-        self._pending_tool_calls: list[dict[str, str]] = []
+        self._pending_tool_calls: list[dict[str, Any]] = []
+        # Each entry: {"id": str, "name": str, "arguments": str, "result": str | None}
         self._task: Task | None = None
 
     def initialize_conversation(self, task: Task) -> None:
@@ -107,93 +113,75 @@ class YutoriNavigatorLLMCaller(LLMCaller):
             self._conversation_initialized = True
             LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
 
-    def add_tool_result(self, screenshot_bytes: bytes, current_url: str) -> None:
-        """Add screenshot and URL as a tool result or initial user message.
+    def set_tool_result(self, tool_call_id: str, result: str) -> None:
+        """Set the result for a pending tool call (used by agent loop for DOM tools)."""
+        for tc in self._pending_tool_calls:
+            if tc["id"] == tool_call_id:
+                tc["result"] = result
+                return
 
-        First turn: user message with task text + screenshot.
-        Subsequent turns: tool-role messages with action result + URL + screenshot.
+    def flush_pending_tool_results(self, screenshot_bytes: bytes, current_url: str) -> None:
+        """Flush pending tool call results into the message history.
+
+        Tool calls with a result set (DOM tools) are flushed immediately.
+        Tool calls without a result (browser actions) use _describe_browser_action
+        as a fallback description. The last flushed tool call includes the
+        screenshot so the model sees the current state.
         """
-        if not screenshot_bytes:
+        if not self._pending_tool_calls:
             return
 
         data_url = screenshot_to_data_url(screenshot_bytes)
-        image_content = {
-            "type": "image_url",
-            "image_url": {"url": data_url},
-        }
+        image_content = {"type": "image_url", "image_url": {"url": data_url}}
 
-        if not self.message_history:
-            # First turn: user message with task + screenshot
-            user_content: list[dict[str, Any]] = []
-            if self._task:
-                user_content.append({"type": "text", "text": f"Task: {self._task.navigation_goal or ''}"})
-            user_content.append(image_content)
-            self.message_history.append({"role": "user", "content": user_content})
-        elif self._pending_tool_calls:
-            # Subsequent turns: tool response with action result + URL + screenshot
-            for i, tc in enumerate(self._pending_tool_calls):
-                result_text = _describe_action_result(tc["name"], tc["arguments"])
-                result_text += f"\nCurrent URL: {current_url}"
-                if i < len(self._pending_tool_calls) - 1:
-                    self.message_history.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": result_text,
-                    })
-                else:
-                    # Last tool_call gets the screenshot
-                    self.message_history.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": [
-                            {"type": "text", "text": result_text},
-                            image_content,
-                        ],
-                    })
-            self._pending_tool_calls = []
+        # Resolve results: DOM tools already have results set,
+        # browser actions fall back to a descriptive string.
+        for tc in self._pending_tool_calls:
+            if tc.get("result") is None:
+                tc["result"] = _describe_browser_action(tc["name"], tc["arguments"])
 
-    def add_dom_tool_result(self, tool_call_id: str, result: str) -> None:
-        """Add a result from an expanded DOM tool (extract_elements, find, etc.)."""
-        self.message_history.append({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": result,
-        })
+        for i, tc in enumerate(self._pending_tool_calls):
+            result_text = tc["result"] + f"\nCurrent URL: {current_url}"
+
+            if i < len(self._pending_tool_calls) - 1:
+                self.message_history.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result_text,
+                })
+            else:
+                # Last tool call gets the screenshot
+                self.message_history.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": [
+                        {"type": "text", "text": result_text},
+                        image_content,
+                    ],
+                })
+
+        self._pending_tool_calls = []
+
+    def add_initial_message(self, screenshot_bytes: bytes) -> None:
+        """Add the first user message with task description and screenshot."""
+        if self.message_history:
+            return  # Already initialized
+
+        data_url = screenshot_to_data_url(screenshot_bytes)
+        user_content: list[dict[str, Any]] = []
+        if self._task:
+            user_content.append({"type": "text", "text": f"Task: {self._task.navigation_goal or ''}"})
+        user_content.append({"type": "image_url", "image_url": {"url": data_url}})
+        self.message_history.append({"role": "user", "content": user_content})
 
     def add_stop_and_summarize(self, screenshot_bytes: bytes, current_url: str) -> None:
         """Append a stop-and-summarize user message for the last step.
 
-        Called when max steps is about to be reached, so the model produces
-        a summary instead of another action. This becomes part of the normal
-        step's LLM call, keeping costs and artifacts tracked.
-
-        Flushes any pending tool_call responses first so the conversation
-        stays valid (assistant tool_calls must be followed by tool responses
-        before a user message).
+        Flushes any pending tool call results first so the conversation stays valid,
+        then appends a user message asking the model to summarize progress.
         """
-        # Flush pending tool calls from the previous step's response
         if self._pending_tool_calls:
-            data_url = screenshot_to_data_url(screenshot_bytes)
-            image_content = {"type": "image_url", "image_url": {"url": data_url}}
-            for i, tc in enumerate(self._pending_tool_calls):
-                result_text = _describe_action_result(tc["name"], tc["arguments"])
-                result_text += f"\nCurrent URL: {current_url}"
-                if i < len(self._pending_tool_calls) - 1:
-                    self.message_history.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": result_text,
-                    })
-                else:
-                    self.message_history.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": [
-                            {"type": "text", "text": result_text},
-                            image_content,
-                        ],
-                    })
-            self._pending_tool_calls = []
+            self.flush_pending_tool_results(screenshot_bytes, current_url)
 
         task_goal = self._task.navigation_goal if self._task else "the given task"
         data_url = screenshot_to_data_url(screenshot_bytes)
@@ -218,7 +206,7 @@ class YutoriNavigatorLLMCaller(LLMCaller):
     async def generate_response(self, step: Step) -> NavigatorResponse:
         """Generate Navigator response and update conversation history.
 
-        Returns an NavigatorResponse with normalized fields so callers don't need
+        Returns a NavigatorResponse with normalized fields so callers don't need
         to handle dict vs object differences from the base class.
         """
         response = await self.call(step=step)
@@ -260,8 +248,15 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}
         if tool_calls_data:
             assistant_msg["tool_calls"] = tool_calls_data
+            # Store pending tool calls with pre-filled browser action descriptions.
+            # DOM tool results will be set later by the agent loop via set_tool_result().
             self._pending_tool_calls = [
-                {"id": tc["id"], "name": tc["function"]["name"], "arguments": tc["function"]["arguments"]}
+                {
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "arguments": tc["function"]["arguments"],
+                    "result": None,  # Set later for DOM tools; browser actions use _describe_browser_action fallback
+                }
                 for tc in tool_calls_data
             ]
         self.message_history.append(assistant_msg)
