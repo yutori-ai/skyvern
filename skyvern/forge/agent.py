@@ -80,8 +80,8 @@ from skyvern.forge.sdk.api.llm.api_handler_factory import LLMAPIHandlerFactory, 
 from skyvern.forge.sdk.api.llm.config_registry import LLMConfigRegistry
 from skyvern.forge.sdk.api.llm.exceptions import LLM_PROVIDER_ERROR_RETRYABLE_TASK_TYPE, LLM_PROVIDER_ERROR_TYPE
 from skyvern.forge.sdk.api.llm.ui_tars_llm_caller import UITarsLLMCaller
-from skyvern.forge.sdk.api.llm.yutori_n1_llm_caller import YutoriN1LLMCaller
-from skyvern.forge.sdk.api.llm.yutori_n1_response import parse_and_convert_yutori_n1_actions
+from skyvern.forge.sdk.api.llm.yutori_navigator_llm_caller import NavigatorResponse, YutoriNavigatorLLMCaller
+from skyvern.forge.sdk.api.llm.yutori_navigator_response import EXPANDED_TOOL_ACTIONS, parse_navigator_response_to_actions
 from skyvern.forge.sdk.api.llm.vertex_cache_manager import get_cache_manager
 from skyvern.forge.sdk.artifact.manager import BulkArtifactCreationRequest
 from skyvern.forge.sdk.artifact.models import ArtifactType
@@ -491,20 +491,17 @@ class ForgeAgent:
                     ui_tars_llm_caller.initialize_conversation(task)
                     llm_caller = ui_tars_llm_caller
 
-            if engine == RunEngine.yutori_n1 and not llm_caller:
+            if engine == RunEngine.yutori_navigator and not llm_caller:
                 llm_caller = LLMCallerManager.get_llm_caller(task.task_id)
                 if not llm_caller:
-                    yutori_n1_caller = YutoriN1LLMCaller(
-                        api_key=settings.YUTORI_N1_API_KEY or "",
-                        model=settings.YUTORI_N1_MODEL,
-                        base_url=settings.YUTORI_N1_API_BASE,
-                    )
-                    yutori_n1_caller.initialize_conversation(task)
-                    llm_caller = yutori_n1_caller
+                    llm_key = task.llm_key or settings.YUTORI_LLM_KEY
+                    yutori_caller = YutoriNavigatorLLMCaller(llm_key=llm_key, screenshot_scaling_enabled=False)
+                    yutori_caller.initialize_conversation(task)
+                    llm_caller = yutori_caller
 
             # TODO: remove the code after migrating everything to llm callers
             # currently, only anthropic cua and ui_tars tasks use llm_caller
-            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars, RunEngine.yutori_n1] and llm_caller:
+            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars, RunEngine.yutori_navigator] and llm_caller:
                 LLMCallerManager.set_llm_caller(task.task_id, llm_caller)
 
             step, detailed_output = await self.agent_step(
@@ -1098,13 +1095,9 @@ class ForgeAgent:
                     scraped_page=scraped_page,
                     llm_caller=llm_caller,
                 )
-            elif engine == RunEngine.yutori_n1 and not await app.EXPERIMENTATION_PROVIDER.is_feature_enabled_cached(
-                "DISABLE_YUTORI_N1_CUA",
-                task.workflow_run_id or task.task_id,
-                properties={"organization_id": task.organization_id},
-            ):
+            elif engine == RunEngine.yutori_navigator:
                 assert llm_caller is not None
-                actions = await self._generate_yutori_n1_actions(
+                actions = await self._generate_yutori_navigator_actions(
                     task=task,
                     step=step,
                     scraped_page=scraped_page,
@@ -1944,28 +1937,106 @@ class ForgeAgent:
 
         return actions
 
-    async def _generate_yutori_n1_actions(
+    async def _generate_yutori_navigator_actions(
         self,
         task: Task,
         step: Step,
         scraped_page: ScrapedPage,
         llm_caller: LLMCaller,
     ) -> list[Action]:
-        if not isinstance(llm_caller, YutoriN1LLMCaller):
-            raise ValueError(f"Expected YutoriN1LLMCaller, got {type(llm_caller)}")
+        import json as _json
+
+        from yutori.navigator.tools import (
+            EXTRACT_ELEMENTS_SCRIPT,
+            FIND_SCRIPT,
+            GET_ELEMENT_BY_REF_SCRIPT,
+            SET_ELEMENT_VALUE_SCRIPT,
+            evaluate_tool_script,
+        )
+
+        if not isinstance(llm_caller, YutoriNavigatorLLMCaller):
+            raise ValueError(f"Expected YutoriNavigatorLLMCaller, got {type(llm_caller)}")
         if not scraped_page.screenshots:
-            raise ValueError("No screenshots found for Yutori N1 action generation")
+            raise ValueError("No screenshots found for Yutori Navigator action generation")
         if step.order == 0 and step.retry_index == 0:
             llm_caller.initialize_conversation(task)
-        llm_caller.add_tool_result(scraped_page.screenshots[0], scraped_page.url)
-        response = await llm_caller.generate_response(step)
+
+        # Detect last step — send stop-and-summarize instead of normal tool result
+        max_steps = task.max_steps_per_run or settings.MAX_STEPS_PER_RUN
+        is_last_step = step.order + 1 >= max_steps
+
+        if is_last_step:
+            llm_caller.add_stop_and_summarize(scraped_page.screenshots[0])
+        else:
+            llm_caller.add_tool_result(scraped_page.screenshots[0], scraped_page.url)
+
         window_dimension = (
             cast(Resolution, scraped_page.window_dimension)
             if scraped_page.window_dimension
             else Resolution(width=settings.BROWSER_WIDTH, height=settings.BROWSER_HEIGHT)
         )
-        return parse_and_convert_yutori_n1_actions(
-            response, window_dimension["width"], window_dimension["height"], task=task, step=step,
+
+        # Navigator may return expanded DOM tool calls (extract_elements, find, etc.)
+        # that need to be executed inline and fed back before we get browser actions.
+        nav_resp: NavigatorResponse | None = None
+        max_dom_tool_rounds = 5
+        for _ in range(max_dom_tool_rounds):
+            nav_resp = await llm_caller.generate_response(step)
+
+            if not nav_resp.tool_calls:
+                break
+
+            tc_names = [tc["function"]["name"] for tc in nav_resp.tool_calls]
+            dom_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] in EXPANDED_TOOL_ACTIONS]
+            if not dom_tool_calls:
+                break  # Only browser actions — proceed to conversion
+
+            # Execute DOM tools inline via the SDK's bundled JS scripts
+            page = await scraped_page._browser_state.get_working_page()
+            script_map = {
+                "extract_elements": EXTRACT_ELEMENTS_SCRIPT,
+                "find": FIND_SCRIPT,
+                "set_element_value": SET_ELEMENT_VALUE_SCRIPT,
+                "execute_js": None,
+            }
+
+            for tc in nav_resp.tool_calls:
+                tc_name = tc["function"]["name"]
+                args = _json.loads(tc["function"]["arguments"])
+                tc_id = tc["id"]
+                if tc_name == "extract_elements":
+                    result = await evaluate_tool_script(page, script_map["extract_elements"], args.get("filter", "visible"))
+                    llm_caller.add_dom_tool_result(tc_id, result.get("pageContent", str(result)))
+                elif tc_name == "find":
+                    text = args.get("text", "")
+                    result = await evaluate_tool_script(page, script_map["find"], text)
+                    dom_tree = result.get("pageContent", str(result))
+                    lines = [line for line in dom_tree.split("\n") if text.lower() in line.lower()]
+                    if lines:
+                        llm_caller.add_dom_tool_result(tc_id, f"Found {len(lines)} element(s) matching \"{text}\":\n" + "\n".join(lines[:20]))
+                    else:
+                        llm_caller.add_dom_tool_result(tc_id, f'No elements matching "{text}" found on the page.')
+                elif tc_name == "set_element_value":
+                    result = await evaluate_tool_script(page, script_map["set_element_value"], args.get("ref", ""), args.get("value", ""))
+                    llm_caller.add_dom_tool_result(tc_id, result.get("message", str(result)))
+                elif tc_name == "execute_js":
+                    js_code = args.get("text", "")
+                    raw = await page.evaluate(js_code)
+                    if raw is None:
+                        llm_caller.add_dom_tool_result(tc_id, "undefined")
+                    elif isinstance(raw, (dict, list)):
+                        llm_caller.add_dom_tool_result(tc_id, _json.dumps(raw, indent=2))
+                    else:
+                        llm_caller.add_dom_tool_result(tc_id, str(raw))
+                else:
+                    llm_caller.add_dom_tool_result(tc_id, f"Current URL: {scraped_page.url}")
+
+            browser_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] not in EXPANDED_TOOL_ACTIONS]
+            if browser_tool_calls:
+                break
+
+        return parse_navigator_response_to_actions(
+            nav_resp, window_dimension["width"], window_dimension["height"], task=task, step=step,
         )
 
     async def _speculate_next_step_plan(
@@ -3470,7 +3541,7 @@ class ForgeAgent:
                                 extracted_information=action_result.data,
                             )
                             return action_result.data
-                # For CUA-style engines (e.g. yutori_n1), the model returns its answer
+                # For CUA-style engines (e.g. yutori-navigator), the model returns its answer
                 # inside the CompleteAction's data_extraction_goal field. Surface that
                 # as extracted_information when no EXTRACT action result is found.
                 if action.action_type == ActionType.COMPLETE and complete_action_content is None:
@@ -4218,7 +4289,7 @@ class ForgeAgent:
 
         if step.order + 1 >= max_steps_per_run:
             LOG.info(
-                "Step completed but max steps reached, marking task as failed",
+                "Step completed but max steps reached",
                 step_order=step.order,
                 step_retry=step.retry_index,
                 max_steps=max_steps_per_run,
@@ -4232,6 +4303,8 @@ class ForgeAgent:
                 output=step.output,
                 is_last=True,
             )
+
+            await self._cancel_speculative_step(next_step)
 
             generated_failure_reason = await self.summary_failure_reason_for_max_steps(
                 organization=organization,
@@ -4257,8 +4330,6 @@ class ForgeAgent:
                 failure_category_source="llm" if generated_failure_reason.failure_categories else "code_level",
                 failure_category_path="max_steps",
             )
-
-            await self._cancel_speculative_step(next_step)
 
             await self.update_task(
                 task,

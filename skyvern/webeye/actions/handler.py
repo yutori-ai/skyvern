@@ -2421,6 +2421,28 @@ async def handle_go_back_action(
     return [ActionSuccess()]
 
 
+async def handle_go_forward_action(
+    action: actions.GoForwardAction,
+    page: Page,
+    scraped_page: ScrapedPage,
+    task: Task,
+    step: Step,
+) -> list[ActionResult]:
+    await page.go_forward(timeout=settings.BROWSER_LOADING_TIMEOUT_MS)
+    return [ActionSuccess()]
+
+
+async def handle_reload_page_action(
+    action: actions.ReloadPageAction,
+    page: Page,
+    scraped_page: ScrapedPage,
+    task: Task,
+    step: Step,
+) -> list[ActionResult]:
+    await page.reload(timeout=settings.BROWSER_LOADING_TIMEOUT_MS)
+    return [ActionSuccess()]
+
+
 @traced()
 async def handle_close_page_action(
     action: actions.ClosePageAction,
@@ -2454,6 +2476,8 @@ ActionHandler.register_action_type(ActionType.LEFT_MOUSE, handle_left_mouse_acti
 ActionHandler.register_action_type(ActionType.GOTO_URL, handle_goto_url_action)
 ActionHandler.register_action_type(ActionType.CLOSE_PAGE, handle_close_page_action)
 ActionHandler.register_action_type(ActionType.GO_BACK, handle_go_back_action)
+ActionHandler.register_action_type(ActionType.GO_FORWARD, handle_go_forward_action)
+ActionHandler.register_action_type(ActionType.RELOAD_PAGE, handle_reload_page_action)
 
 
 def get_actual_value_of_parameter_if_secret(workflow_run_id: str, parameter: str) -> Any:

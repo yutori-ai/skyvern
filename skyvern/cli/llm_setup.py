@@ -145,19 +145,19 @@ def setup_llm_providers() -> None:
     else:
         update_or_add_env_var("ENABLE_GEMINI", "false")
 
-    console.print("\n[bold blue]--- Yutori N1 Configuration ---[/bold blue]")
-    console.print("To enable Yutori N1, you must have a Yutori API key.")
-    enable_yutori_n1 = Confirm.ask("Do you want to enable Yutori N1?")
-    if enable_yutori_n1:
-        yutori_n1_api_key = Prompt.ask("Enter your Yutori API key", password=True)
-        if not yutori_n1_api_key:
-            console.print("[red]Error: Yutori API key is required. Yutori N1 will not be enabled.[/red]")
+    console.print("\n[bold blue]--- Yutori Navigator Configuration ---[/bold blue]")
+    console.print("To enable Yutori Navigator, you must have a Yutori API key.")
+    enable_yutori = Confirm.ask("Do you want to enable Yutori Navigator?")
+    if enable_yutori:
+        yutori_api_key = Prompt.ask("Enter your Yutori API key", password=True)
+        if not yutori_api_key:
+            console.print("[red]Error: Yutori API key is required. Yutori Navigator will not be enabled.[/red]")
         else:
-            update_or_add_env_var("YUTORI_N1_API_KEY", yutori_n1_api_key)
-            update_or_add_env_var("ENABLE_YUTORI_N1", "true")
-            enabled_providers.append("yutori_n1")
+            update_or_add_env_var("YUTORI_API_KEY", yutori_api_key)
+            update_or_add_env_var("ENABLE_YUTORI", "true")
+            enabled_providers.append("yutori_navigator")
     else:
-        update_or_add_env_var("ENABLE_YUTORI_N1", "false")
+        update_or_add_env_var("ENABLE_YUTORI", "false")
 
     console.print("\n[bold blue]--- Ollama / Local LLM Configuration ---[/bold blue]")
     console.print("Use any locally-running model via Ollama (e.g. llama3, mistral, qwen).")

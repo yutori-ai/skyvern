@@ -211,6 +211,8 @@ class Action(BaseModel):
                 return GotoUrlAction.model_validate(value)
             elif action_type is ActionType.GO_BACK:
                 return GoBackAction.model_validate(value)
+            elif action_type is ActionType.GO_FORWARD:
+                return GoForwardAction.model_validate(value)
             elif action_type is ActionType.CLOSE_PAGE:
                 return ClosePageAction.model_validate(value)
             else:
@@ -372,6 +374,10 @@ class GotoUrlAction(Action):
 
 class GoBackAction(Action):
     action_type: ActionType = ActionType.GO_BACK
+
+
+class GoForwardAction(Action):
+    action_type: ActionType = ActionType.GO_FORWARD
 
 
 class MoveAction(Action):

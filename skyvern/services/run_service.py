@@ -25,7 +25,7 @@ async def get_run_response(run_id: str, organization_id: str | None = None) -> R
         or run.task_run_type == RunType.openai_cua
         or run.task_run_type == RunType.anthropic_cua
         or run.task_run_type == RunType.ui_tars
-        or run.task_run_type == RunType.yutori_n1
+        or run.task_run_type == RunType.yutori_navigator
     ):
         # fetch task v1 from db and transform to task run response
         try:
@@ -41,8 +41,8 @@ async def get_run_response(run_id: str, organization_id: str | None = None) -> R
             run_engine = RunEngine.anthropic_cua
         elif run.task_run_type == RunType.ui_tars:
             run_engine = RunEngine.ui_tars
-        elif run.task_run_type == RunType.yutori_n1:
-            run_engine = RunEngine.yutori_n1
+        elif run.task_run_type == RunType.yutori_navigator:
+            run_engine = RunEngine.yutori_navigator
 
         return TaskRunResponse(
             run_id=run.run_id,
@@ -138,7 +138,7 @@ async def cancel_run(run_id: str, organization_id: str | None = None, api_key: s
             detail=f"Run not found {run_id}",
         )
 
-    if run.task_run_type in [RunType.task_v1, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_n1]:
+    if run.task_run_type in [RunType.task_v1, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_navigator]:
         await cancel_task_v1(run_id, organization_id=organization_id, api_key=api_key)
     elif run.task_run_type == RunType.task_v2:
         await cancel_task_v2(run_id, organization_id=organization_id)
@@ -177,7 +177,7 @@ async def retry_run_webhook(
         )
         return
 
-    if run.task_run_type in [RunType.task_v1, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_n1]:
+    if run.task_run_type in [RunType.task_v1, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_navigator]:
         task = await app.DATABASE.get_task(run_id, organization_id=organization_id)
         if not task:
             raise TaskNotFound(task_id=run_id)

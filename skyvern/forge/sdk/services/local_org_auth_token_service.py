@@ -43,7 +43,7 @@ async def ensure_local_org() -> Organization:
     return await app.DATABASE.create_organization(
         organization_name=SKYVERN_LOCAL_ORG,
         domain=SKYVERN_LOCAL_DOMAIN,
-        max_steps_per_run=25,
+        max_steps_per_run=10,
         max_retries_per_step=3,
     )
 
@@ -62,7 +62,7 @@ async def ensure_local_org_with_id(organization_id: str) -> Organization:
         organization_id=organization_id,
         organization_name=SKYVERN_LOCAL_ORG,
         domain=SKYVERN_LOCAL_DOMAIN,
-        max_steps_per_run=25,
+        max_steps_per_run=10,
         max_retries_per_step=3,
     )
 

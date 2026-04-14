@@ -44,8 +44,8 @@ const allEngineOptions: Array<EngineOption> = [
     label: "Anthropic CUA",
   },
   {
-    value: RunEngine.YutoriN1,
-    label: "Yutori N1",
+    value: RunEngine.YutoriNavigator,
+    label: "Yutori Navigator",
     badge: "New",
     badgeVariant: "default",
   },
@@ -56,7 +56,7 @@ const defaultEngines: Array<RunEngine> = [
   RunEngine.SkyvernV1,
   RunEngine.OpenaiCua,
   RunEngine.AnthropicCua,
-  RunEngine.YutoriN1,
+  RunEngine.YutoriNavigator,
 ];
 
 function BadgeLabel({ option }: { option: EngineOption }) {

@@ -1,4 +1,4 @@
-"""Run a subset of WebVoyager CUA tasks against the Yutori N1 engine and print results."""
+"""Run a subset of WebVoyager CUA tasks against the Yutori Navigator engine and print results."""
 
 import asyncio
 import json
@@ -46,7 +46,7 @@ async def submit_task(client: httpx.AsyncClient, api_key: str, task: dict) -> st
         headers={"Content-Type": "application/json", "x-api-key": api_key},
         json={
             "prompt": task["ques"],
-            "engine": "yutori-n1",
+            "engine": "yutori-navigator",
             "url": task["web"],
         },
     )

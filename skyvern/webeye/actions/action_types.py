@@ -25,6 +25,7 @@ class ActionType(StrEnum):
 
     GOTO_URL = "goto_url"
     GO_BACK = "go_back"
+    GO_FORWARD = "go_forward"
     SCROLL = "scroll"
     KEYPRESS = "keypress"
     MOVE = "move"

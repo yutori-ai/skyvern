@@ -112,7 +112,7 @@ function CreateNewTaskForm({ initialValues }: Props) {
     "base",
   ]);
   const [showAdvancedBaseContent, setShowAdvancedBaseContent] = useState(false);
-  const [selectedEngine, setSelectedEngine] = useState<RunEngine>(RunEngine.YutoriN1);
+  const [selectedEngine, setSelectedEngine] = useState<RunEngine>(RunEngine.SkyvernV1);
 
   const { data: organizations } = useQuery<Array<OrganizationApiResponse>>({
     queryKey: ["organizations"],

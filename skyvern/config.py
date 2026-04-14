@@ -248,11 +248,13 @@ class Settings(BaseSettings):
     VOLCENGINE_API_BASE: str = "https://ark.cn-beijing.volces.com/api/v3"
     VOLCENGINE_CUA_LLM_KEY: str = "VOLCENGINE_DOUBAO_1_5_THINKING_VISION_PRO"
 
-    # YUTORI N1
-    ENABLE_YUTORI_N1: bool = False
-    YUTORI_N1_API_KEY: str | None = None
-    YUTORI_N1_API_BASE: str = "https://api.yutori.com/v1"
-    YUTORI_N1_MODEL: str = "n1-latest"
+    # Yutori Navigator
+    ENABLE_YUTORI: bool = False
+    YUTORI_API_KEY: str | None = None
+    YUTORI_API_BASE: str = "https://api.yutori.com/v1"
+    YUTORI_MODEL: str = "n1.5-latest"
+    YUTORI_LLM_KEY: str = "YUTORI_NAVIGATOR"
+    YUTORI_TOOL_SET: str = ""
 
     # OPENAI COMPATIBLE
     OPENAI_COMPATIBLE_MODEL_NAME: str | None = None
