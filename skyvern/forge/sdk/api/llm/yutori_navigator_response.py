@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from yutori.navigator import denormalize_coordinates, map_key_to_playwright, map_keys_individual
 from yutori.navigator.tools import (
+    EXECUTE_JS_SCRIPT,
     EXTRACT_ELEMENTS_SCRIPT,
     FIND_SCRIPT,
     SET_ELEMENT_VALUE_SCRIPT,
 )
+from skyvern.forge.sdk.api.llm.yutori_navigator_llm_caller import NavigatorResponse
 
 from skyvern.webeye.actions.actions import (
     ClickAction,
@@ -28,7 +30,6 @@ from skyvern.webeye.actions.actions import (
     MoveAction,
     ReloadPageAction,
     ScrollAction,
-    WaitAction,
 )
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ class YutoriNavigatorActionType(StrEnum):
     GO_FORWARD = "go_forward"
     GOTO_URL = "goto_url"
     REFRESH = "refresh"
-    # Expanded tool set (handled inline by agent, not converted to Skyvern actions)
+    # Expanded tool set (mapped into generic Skyvern JS execution actions)
     EXTRACT_ELEMENTS = "extract_elements"
     FIND = "find"
     SET_ELEMENT_VALUE = "set_element_value"
@@ -72,18 +73,15 @@ class YutoriNavigatorActionType(StrEnum):
 
 
 def parse_navigator_response_to_actions(
-    nav_response: Any,
+    nav_response: NavigatorResponse,
     viewport_width: int,
     viewport_height: int,
     task: "Task | None" = None,
     step: "Step | None" = None,
 ) -> list[Action]:
-    """Convert a NavigatorResponse to Skyvern actions.
-
-    Expects nav_response to have .content, .tool_calls (list of dicts), .finish_reason.
-    """
-    tool_calls = nav_response.tool_calls if hasattr(nav_response, "tool_calls") else []
-    content = nav_response.content if hasattr(nav_response, "content") else ""
+    """Convert a NavigatorResponse to Skyvern actions."""
+    tool_calls = nav_response.tool_calls
+    content = nav_response.content
 
     if not tool_calls:
         base_params = _base_params(task, step, 0)
@@ -92,12 +90,21 @@ def parse_navigator_response_to_actions(
 
     actions: list[Action] = []
     for idx, tc in enumerate(tool_calls):
-        name = tc["function"]["name"] if isinstance(tc, dict) else tc.function.name
-        arguments = tc["function"]["arguments"] if isinstance(tc, dict) else tc.function.arguments
+        name = tc["function"]["name"]
+        arguments = tc["function"]["arguments"]
 
         try:
             args = json.loads(arguments)
-            action = _convert_tool_call(name, args, viewport_width, viewport_height, task, step, idx)
+            action = _convert_tool_call(
+                name,
+                args,
+                viewport_width,
+                viewport_height,
+                task,
+                step,
+                idx,
+                tool_call_id=tc["id"],
+            )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             LOG.warning("Navigator tool call conversion failed", name=name, error=str(e))
             continue
@@ -105,10 +112,6 @@ def parse_navigator_response_to_actions(
             actions.append(action)
         else:
             LOG.warning("Navigator unknown tool call", name=name)
-
-    if not actions and tool_calls:
-        base_params = _base_params(task, step, 0)
-        return [CompleteAction(data_extraction_goal="Task completed (unknown action types)", **base_params)]
 
     return actions
 
@@ -141,6 +144,7 @@ def _convert_tool_call(
     task: "Task | None" = None,
     step: "Step | None" = None,
     action_order: int = 0,
+    tool_call_id: str | None = None,
 ) -> Action | None:
     try:
         action_type = YutoriNavigatorActionType(name)
@@ -151,6 +155,8 @@ def _convert_tool_call(
     x = coord[0] if coord is not None else None
     y = coord[1] if coord is not None else None
     bp = _base_params(task, step, action_order)
+    if tool_call_id is not None:
+        bp["tool_call_id"] = tool_call_id
 
     # ---- Click actions ----
     if action_type == YutoriNavigatorActionType.LEFT_CLICK:
@@ -270,6 +276,7 @@ def _convert_tool_call(
         return ExecuteJsAction(js_code=f"({SET_ELEMENT_VALUE_SCRIPT})({ref}, {value})", **bp)
 
     if action_type == YutoriNavigatorActionType.EXECUTE_JS:
-        return ExecuteJsAction(js_code=args.get("text", ""), **bp)
+        source = json.dumps(args.get("text", ""))
+        return ExecuteJsAction(js_code=f"({EXECUTE_JS_SCRIPT})({source})", **bp)
 
-    return WaitAction(**bp)
+    return None

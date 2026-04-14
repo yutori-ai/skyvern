@@ -12,9 +12,8 @@ Conversation format per https://docs.yutori.com/reference/browser-use:
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 
 import structlog
 from yutori.navigator import format_stop_and_summarize, screenshot_to_data_url
@@ -22,13 +21,6 @@ from yutori.navigator import format_stop_and_summarize, screenshot_to_data_url
 from skyvern.forge.sdk.api.llm.api_handler_factory import LLMCaller
 from skyvern.forge.sdk.models import Step
 from skyvern.forge.sdk.schemas.tasks import Task
-
-_file_log = logging.getLogger("yutori_skyvern")
-if not _file_log.handlers:
-    _h = logging.FileHandler("/tmp/yutori_skyvern.log")
-    _h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-    _file_log.addHandler(_h)
-    _file_log.setLevel(logging.DEBUG)
 
 LOG = structlog.get_logger()
 
@@ -41,6 +33,15 @@ class NavigatorResponse:
     finish_reason: str | None = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     """Each tool_call is {"id": ..., "function": {"name": ..., "arguments": ...}}"""
+
+
+class PendingToolCall(TypedDict):
+    id: str
+    name: str
+    arguments: str
+    result: str | None
+
+
 def _action_result_description(name: str, arguments_json: str) -> str:
     """Derive an action result description from the tool call, matching the SDK example.
 
@@ -98,8 +99,7 @@ class YutoriNavigatorLLMCaller(LLMCaller):
     def __init__(self, llm_key: str, screenshot_scaling_enabled: bool = False):
         super().__init__(llm_key, screenshot_scaling_enabled)
         self._conversation_initialized = False
-        self._pending_tool_calls: list[dict[str, Any]] = []
-        # Each entry: {"id": str, "name": str, "arguments": str, "result": str | None}
+        self._pending_tool_calls: list[PendingToolCall] = []
         self._task: Task | None = None
 
     def initialize_conversation(self, task: Task) -> None:
@@ -111,10 +111,12 @@ class YutoriNavigatorLLMCaller(LLMCaller):
             self._conversation_initialized = True
             LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
 
-    def update_pending_result(self, action_order: int, result: str) -> None:
-        """Set the actual execution result for a pending tool call by action order."""
-        if 0 <= action_order < len(self._pending_tool_calls):
-            self._pending_tool_calls[action_order]["result"] = result
+    def update_pending_result(self, tool_call_id: str, result: str | None) -> None:
+        """Set the actual execution result for a pending tool call by tool_call_id."""
+        for tool_call in self._pending_tool_calls:
+            if tool_call["id"] == tool_call_id:
+                tool_call["result"] = result
+                return
 
     def flush_pending_tool_results(self, screenshot_bytes: bytes, current_url: str) -> None:
         """Flush all pending tool call results into the message history.
@@ -222,16 +224,15 @@ class YutoriNavigatorLLMCaller(LLMCaller):
                 response.model_extra.get("request_id") if getattr(response, "model_extra", None) else None
             )
 
-        # Debug logging
         tool_names = [tc["function"]["name"] for tc in tool_calls_data]
-        task_id = self._task.task_id if self._task else None
-        _file_log.info(json.dumps({
-            "task_id": task_id,
-            "step_order": step.order,
-            "request_id": request_id,
-            "finish_reason": finish_reason,
-            "tool_calls": tool_names,
-        }))
+        LOG.info(
+            "Yutori Navigator response received",
+            task_id=self._task.task_id if self._task else None,
+            step_order=step.order,
+            request_id=request_id,
+            finish_reason=finish_reason,
+            tool_calls=tool_names,
+        )
 
         # Append assistant message to history
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}

@@ -1555,16 +1555,16 @@ class ForgeAgent:
                 nav_caller = LLMCallerManager.get_llm_caller(task.task_id)
                 if isinstance(nav_caller, YutoriNavigatorLLMCaller):
                     for action, results in detailed_agent_step_output.actions_and_results:
-                        if not results:
+                        if not results or not action.tool_call_id:
                             continue
-                        r = results[0]
+                        r = results[-1]
                         if r.success:
                             # Use actual data when available (JS output, etc.)
                             result_str = str(r.data) if r.data is not None else None
                         else:
                             # Provide error details so the model can recover
                             result_str = f"ERROR: {r.exception_message or 'Action failed'}"
-                        nav_caller.update_pending_result(action.action_order, result_str)
+                        nav_caller.update_pending_result(action.tool_call_id, result_str)
 
             # Check if Skyvern already returned a complete action, if so, don't run user goal check
             has_decisive_action = False
@@ -2010,9 +2010,22 @@ class ForgeAgent:
             else Resolution(width=settings.BROWSER_WIDTH, height=settings.BROWSER_HEIGHT)
         )
 
-        return parse_navigator_response_to_actions(
+        actions = parse_navigator_response_to_actions(
             nav_resp, window_dimension["width"], window_dimension["height"], task=task, step=step,
         )
+        if nav_resp.tool_calls and not actions:
+            tool_names = [tool_call["function"]["name"] for tool_call in nav_resp.tool_calls]
+            LOG.warning(
+                "Unsupported Yutori Navigator tool calls returned no executable actions",
+                task_id=task.task_id,
+                step_order=step.order,
+                tool_calls=tool_names,
+            )
+            raise FailedToParseActionInstruction(
+                reason=f"Unsupported Yutori Navigator tool calls: {', '.join(tool_names)}",
+                error_type="UNSUPPORTED_YUTORI_TOOL_CALLS",
+            )
+        return actions
 
     async def _speculate_next_step_plan(
         self,
