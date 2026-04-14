@@ -177,7 +177,7 @@ constraint-dependencies = [
     "werkzeug>=3.1.6",
 ]
 # yutori SDK pins httpx<0.28 but skyvern's fastmcp needs >=0.28.1
-override-dependencies = ["httpx>=0.26.0"]
+override-dependencies = ["httpx[socks]>=0.26.0"]
 
 [build-system]
 requires = ["hatchling"]

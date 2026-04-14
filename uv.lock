@@ -16,7 +16,7 @@ constraints = [
     { name = "tornado", specifier = ">=6.5.5" },
     { name = "werkzeug", specifier = ">=3.1.6" },
 ]
-overrides = [{ name = "httpx", specifier = ">=0.26.0" }]
+overrides = [{ name = "httpx", extras = ["socks"], specifier = ">=0.26.0" }]
 
 [[package]]
 name = "aioboto3"
@@ -251,7 +251,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "distro" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
@@ -1136,7 +1136,7 @@ dependencies = [
     { name = "authlib" },
     { name = "cyclopts" },
     { name = "exceptiongroup" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "jsonref" },
     { name = "jsonschema-path" },
     { name = "mcp" },
@@ -1532,7 +1532,7 @@ dependencies = [
     { name = "anyio" },
     { name = "distro" },
     { name = "google-auth", extra = ["requests"] },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "pydantic" },
     { name = "requests" },
     { name = "sniffio" },
@@ -1870,6 +1870,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
 ]
 
+[package.optional-dependencies]
+socks = [
+    { name = "socksio" },
+]
+
 [[package]]
 name = "httpx-sse"
 version = "0.4.3"
@@ -1886,7 +1891,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpcore" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "wsproto" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4a/32/6f7198f55d94063ea84487a31cdd3e149d2702dc0804fc5de06ed12ef2c2/httpx_ws-0.8.2.tar.gz", hash = "sha256:ba0d4aa76e1c8a27bd5e88984ecdcdc28f7bf30b40cb0989a4c1438d07fa52c7", size = 105734, upload-time = "2025-11-07T12:57:36.566Z" }
@@ -1902,7 +1907,7 @@ dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
     { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "tqdm" },
@@ -2436,7 +2441,7 @@ version = "4.5.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "async-lru" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "ipykernel" },
     { name = "jinja2" },
     { name = "jupyter-core" },
@@ -2517,7 +2522,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "cryptography" },
     { name = "exceptiongroup", marker = "python_full_version < '3.12'" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "httpx-ws" },
     { name = "packaging" },
     { name = "python-box" },
@@ -2671,7 +2676,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "click" },
     { name = "fastuuid" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "importlib-metadata" },
     { name = "jinja2" },
     { name = "jsonschema" },
@@ -2846,7 +2851,7 @@ version = "1.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "httpx-sse" },
     { name = "jsonschema" },
     { name = "pydantic" },
@@ -3347,7 +3352,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "distro" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
@@ -5502,7 +5507,7 @@ dependencies = [
     { name = "google-cloud-aiplatform" },
     { name = "greenlet", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "greenlet", version = "3.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "jinja2" },
     { name = "json-repair" },
     { name = "jsonschema" },
@@ -5732,6 +5737,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "socksio"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/5c/48a7d9495be3d1c651198fd99dbb6ce190e2274d0f28b9051307bdec6b85/socksio-1.0.0.tar.gz", hash = "sha256:f88beb3da5b5c38b9890469de67d0cb0f9d494b78b106ca1845f96c10b91c4ac", size = 19055, upload-time = "2020-04-17T15:50:34.664Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/c3/6eeb6034408dac0fa653d126c9204ade96b819c936e136c5e8a6897eee9c/socksio-1.0.0-py3-none-any.whl", hash = "sha256:95dc1f15f9b34e8d7b16f06d74b8ccf48f609af32ab33c608d08761c5dcbb1f3", size = 12763, upload-time = "2020-04-17T15:50:31.878Z" },
 ]
 
 [[package]]
@@ -6622,7 +6636,7 @@ name = "yutori"
 version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "httpx" },
+    { name = "httpx", extra = ["socks"] },
     { name = "openai" },
     { name = "pillow" },
     { name = "rich" },
