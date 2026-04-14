@@ -44,14 +44,8 @@ const allEngineOptions: Array<EngineOption> = [
     label: "Anthropic CUA",
   },
   {
-    value: RunEngine.UiTars,
-    label: "UI TARS",
-  },
-  {
     value: RunEngine.YutoriNavigator,
     label: "Yutori Navigator",
-    badge: "New",
-    badgeVariant: "default",
   },
 ];
 
@@ -60,7 +54,6 @@ const defaultEngines: Array<RunEngine> = [
   RunEngine.SkyvernV1,
   RunEngine.OpenaiCua,
   RunEngine.AnthropicCua,
-  RunEngine.UiTars,
   RunEngine.YutoriNavigator,
 ];
 
