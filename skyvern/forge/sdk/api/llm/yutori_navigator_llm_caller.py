@@ -43,44 +43,6 @@ class NavigatorResponse:
     """Each tool_call is {"id": ..., "function": {"name": ..., "arguments": ...}}"""
 
 
-def _describe_browser_action(name: str, arguments_json: str) -> str:
-    """Generate a descriptive result for a browser action matching the SDK's navigator example."""
-    try:
-        args = json.loads(arguments_json)
-    except (json.JSONDecodeError, TypeError):
-        args = {}
-
-    if name in ("left_click", "double_click", "triple_click", "middle_click", "right_click"):
-        button = {"middle_click": "middle", "right_click": "right"}.get(name, "left")
-        count = {"double_click": 2, "triple_click": 3}.get(name, 1)
-        return f"Clicked {count}x with {button}"
-    if name == "mouse_move":
-        return "Mouse moved and hovering"
-    if name == "mouse_down":
-        return "Mouse button pressed"
-    if name == "mouse_up":
-        return "Mouse button released"
-    if name == "drag":
-        return "Dragged successfully"
-    if name == "scroll":
-        return f"Scrolled {args.get('direction', 'down')}"
-    if name == "type":
-        return f"Typed {len(args.get('text', ''))} characters"
-    if name == "key_press":
-        return f"Pressed key: {args.get('key', '')}"
-    if name == "hold_key":
-        return f"Held key: {args.get('key', '')}"
-    if name == "goto_url":
-        return f"Navigated to {args.get('url', '')}"
-    if name == "go_back":
-        return "Navigated back"
-    if name == "go_forward":
-        return "Navigated forward"
-    if name == "refresh":
-        return "Refreshed the page"
-    if name == "wait":
-        return f"Waited {args.get('duration', 5)}s"
-    return f"Executed {name}"
 
 
 class YutoriNavigatorLLMCaller(LLMCaller):
@@ -131,8 +93,7 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         image_content = {"type": "image_url", "image_url": {"url": data_url}}
 
         for i, tc in enumerate(self._pending_tool_calls):
-            # Use actual result if set by update_pending_result, otherwise describe
-            result_text = tc.get("result") or _describe_browser_action(tc["name"], tc["arguments"])
+            result_text = tc.get("result") or "OK"
             result_text += f"\nCurrent URL: {current_url}"
 
             if i < len(self._pending_tool_calls) - 1:

@@ -1550,13 +1550,18 @@ class ForgeAgent:
                     context.totp_codes.pop(secret_key)
 
             # Update Navigator caller with actual action results so the next
-            # step's tool responses include real execution data (e.g. JS output).
+            # step's tool responses include real execution data.
             if engine == RunEngine.yutori_navigator and detailed_agent_step_output and detailed_agent_step_output.actions_and_results:
                 nav_caller = LLMCallerManager.get_llm_caller(task.task_id)
                 if isinstance(nav_caller, YutoriNavigatorLLMCaller):
                     for action, results in detailed_agent_step_output.actions_and_results:
-                        if results and results[0].success and results[0].data is not None:
-                            nav_caller.update_pending_result(action.action_order, str(results[0].data))
+                        if results:
+                            r = results[0]
+                            if r.success:
+                                result_str = str(r.data) if r.data is not None else "OK"
+                            else:
+                                result_str = f"[ERROR] {r.exception_message or 'Action failed'}"
+                            nav_caller.update_pending_result(action.action_order, result_str)
 
             # Check if Skyvern already returned a complete action, if so, don't run user goal check
             has_decisive_action = False
