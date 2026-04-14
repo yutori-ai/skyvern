@@ -1994,7 +1994,6 @@ class ForgeAgent:
             if not nav_resp.tool_calls:
                 break
 
-            tc_names = [tc["function"]["name"] for tc in nav_resp.tool_calls]
             dom_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] in EXPANDED_TOOL_ACTIONS]
             if not dom_tool_calls:
                 break  # Only browser actions — proceed to conversion
