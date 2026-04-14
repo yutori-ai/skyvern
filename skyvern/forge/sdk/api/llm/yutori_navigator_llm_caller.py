@@ -91,17 +91,16 @@ class YutoriNavigatorLLMCaller(LLMCaller):
     in api_handler_factory.py, giving us artifact persistence, cost tracking, and
     error handling for free.
 
-    Each pending tool call carries its own result string. Browser actions get a
-    descriptive result at parse time; DOM tools get their result set by the agent
-    loop after execution. flush_pending_tool_results() appends them all to the
-    message history with the screenshot on the last one.
+    Pending tool calls are flushed into the message history at the start of each
+    step via flush_pending_tool_results(), which appends descriptive results and
+    the current screenshot.
     """
 
     def __init__(self, llm_key: str, screenshot_scaling_enabled: bool = False):
         super().__init__(llm_key, screenshot_scaling_enabled)
         self._conversation_initialized = False
-        self._pending_tool_calls: list[dict[str, Any]] = []
-        # Each entry: {"id": str, "name": str, "arguments": str, "result": str | None}
+        self._pending_tool_calls: list[dict[str, str]] = []
+        # Each entry: {"id": str, "name": str, "arguments": str}
         self._task: Task | None = None
 
     def initialize_conversation(self, task: Task) -> None:
@@ -113,20 +112,11 @@ class YutoriNavigatorLLMCaller(LLMCaller):
             self._conversation_initialized = True
             LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
 
-    def set_tool_result(self, tool_call_id: str, result: str) -> None:
-        """Set the result for a pending tool call (used by agent loop for DOM tools)."""
-        for tc in self._pending_tool_calls:
-            if tc["id"] == tool_call_id:
-                tc["result"] = result
-                return
-
     def flush_pending_tool_results(self, screenshot_bytes: bytes, current_url: str) -> None:
         """Flush pending tool call results into the message history.
 
-        Tool calls with a result set (DOM tools) are flushed immediately.
-        Tool calls without a result (browser actions) use _describe_browser_action
-        as a fallback description. The last flushed tool call includes the
-        screenshot so the model sees the current state.
+        Each tool call gets a descriptive result string. The last one includes
+        the screenshot so the model sees the current page state.
         """
         if not self._pending_tool_calls:
             return
@@ -134,14 +124,9 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         data_url = screenshot_to_data_url(screenshot_bytes)
         image_content = {"type": "image_url", "image_url": {"url": data_url}}
 
-        # Resolve results: DOM tools already have results set,
-        # browser actions fall back to a descriptive string.
-        for tc in self._pending_tool_calls:
-            if tc.get("result") is None:
-                tc["result"] = _describe_browser_action(tc["name"], tc["arguments"])
-
         for i, tc in enumerate(self._pending_tool_calls):
-            result_text = tc["result"] + f"\nCurrent URL: {current_url}"
+            result_text = _describe_browser_action(tc["name"], tc["arguments"])
+            result_text += f"\nCurrent URL: {current_url}"
 
             if i < len(self._pending_tool_calls) - 1:
                 self.message_history.append({
@@ -248,15 +233,8 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}
         if tool_calls_data:
             assistant_msg["tool_calls"] = tool_calls_data
-            # Store pending tool calls with pre-filled browser action descriptions.
-            # DOM tool results will be set later by the agent loop via set_tool_result().
             self._pending_tool_calls = [
-                {
-                    "id": tc["id"],
-                    "name": tc["function"]["name"],
-                    "arguments": tc["function"]["arguments"],
-                    "result": None,  # Set later for DOM tools; browser actions use _describe_browser_action fallback
-                }
+                {"id": tc["id"], "name": tc["function"]["name"], "arguments": tc["function"]["arguments"]}
                 for tc in tool_calls_data
             ]
         self.message_history.append(assistant_msg)

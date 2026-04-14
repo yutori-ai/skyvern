@@ -2455,6 +2455,23 @@ async def handle_close_page_action(
     return [ActionSuccess()]
 
 
+async def handle_execute_js_action(
+    action: actions.ExecuteJsAction,
+    page: Page,
+    scraped_page: ScrapedPage,
+    task: Task,
+    step: Step,
+) -> list[ActionResult]:
+    import json as _json
+
+    result = await page.evaluate(action.js_code)
+    if result is None:
+        return [ActionSuccess(data="undefined")]
+    if isinstance(result, (dict, list)):
+        return [ActionSuccess(data=_json.dumps(result, indent=2))]
+    return [ActionSuccess(data=str(result))]
+
+
 ActionHandler.register_action_type(ActionType.SOLVE_CAPTCHA, handle_solve_captcha_action)
 ActionHandler.register_action_type(ActionType.CLICK, handle_click_action)
 ActionHandler.register_action_type(ActionType.INPUT_TEXT, handle_input_text_action)
@@ -2478,6 +2495,7 @@ ActionHandler.register_action_type(ActionType.CLOSE_PAGE, handle_close_page_acti
 ActionHandler.register_action_type(ActionType.GO_BACK, handle_go_back_action)
 ActionHandler.register_action_type(ActionType.GO_FORWARD, handle_go_forward_action)
 ActionHandler.register_action_type(ActionType.RELOAD_PAGE, handle_reload_page_action)
+ActionHandler.register_action_type(ActionType.EXECUTE_JS, handle_execute_js_action)
 
 
 def get_actual_value_of_parameter_if_secret(workflow_run_id: str, parameter: str) -> Any:

@@ -81,7 +81,7 @@ from skyvern.forge.sdk.api.llm.config_registry import LLMConfigRegistry
 from skyvern.forge.sdk.api.llm.exceptions import LLM_PROVIDER_ERROR_RETRYABLE_TASK_TYPE, LLM_PROVIDER_ERROR_TYPE
 from skyvern.forge.sdk.api.llm.ui_tars_llm_caller import UITarsLLMCaller
 from skyvern.forge.sdk.api.llm.yutori_navigator_llm_caller import NavigatorResponse, YutoriNavigatorLLMCaller
-from skyvern.forge.sdk.api.llm.yutori_navigator_response import EXPANDED_TOOL_ACTIONS, parse_navigator_response_to_actions
+from skyvern.forge.sdk.api.llm.yutori_navigator_response import parse_navigator_response_to_actions
 from skyvern.forge.sdk.api.llm.vertex_cache_manager import get_cache_manager
 from skyvern.forge.sdk.artifact.manager import BulkArtifactCreationRequest
 from skyvern.forge.sdk.artifact.models import ArtifactType
@@ -1946,13 +1946,7 @@ class ForgeAgent:
     ) -> list[Action]:
         import json as _json
 
-        from yutori.navigator.tools import (
-            EXTRACT_ELEMENTS_SCRIPT,
-            FIND_SCRIPT,
-            GET_ELEMENT_BY_REF_SCRIPT,
-            SET_ELEMENT_VALUE_SCRIPT,
-            evaluate_tool_script,
-        )
+        from yutori.navigator.tools import GET_ELEMENT_BY_REF_SCRIPT, evaluate_tool_script
 
         if not isinstance(llm_caller, YutoriNavigatorLLMCaller):
             raise ValueError(f"Expected YutoriNavigatorLLMCaller, got {type(llm_caller)}")
@@ -1978,69 +1972,26 @@ class ForgeAgent:
         else:
             llm_caller.flush_pending_tool_results(scraped_page.screenshots[0], scraped_page.url)
 
+        nav_resp = await llm_caller.generate_response(step)
+
+        # Resolve ref-based targeting to coordinates before parsing.
+        # Navigator can target elements by ref ID instead of coordinates;
+        # we resolve inline so the parser always sees coordinates.
+        if nav_resp.tool_calls:
+            page = await scraped_page._browser_state.get_working_page()
+            for tc in nav_resp.tool_calls:
+                args = _json.loads(tc["function"]["arguments"])
+                if args.get("ref") and not args.get("coordinates"):
+                    result = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, args["ref"])
+                    if result.get("success"):
+                        args["coordinates"] = result["coordinates"]
+                        tc["function"]["arguments"] = _json.dumps(args)
+
         window_dimension = (
             cast(Resolution, scraped_page.window_dimension)
             if scraped_page.window_dimension
             else Resolution(width=settings.BROWSER_WIDTH, height=settings.BROWSER_HEIGHT)
         )
-
-        # Navigator may return expanded DOM tool calls (extract_elements, find, etc.)
-        # that need to be executed inline and fed back before we get browser actions.
-        nav_resp: NavigatorResponse | None = None
-        max_dom_tool_rounds = 5
-        for _ in range(max_dom_tool_rounds):
-            nav_resp = await llm_caller.generate_response(step)
-
-            if not nav_resp.tool_calls:
-                break
-
-            dom_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] in EXPANDED_TOOL_ACTIONS]
-            if not dom_tool_calls:
-                break  # Only browser actions — proceed to conversion
-
-            # Execute DOM tool calls inline and set their results on the caller.
-            # Browser action tool calls keep result=None and will use the
-            # _describe_browser_action fallback when flushed on the next step.
-            page = await scraped_page._browser_state.get_working_page()
-
-            for tc in dom_tool_calls:
-                tc_name = tc["function"]["name"]
-                args = _json.loads(tc["function"]["arguments"])
-                tc_id = tc["id"]
-
-                if tc_name == "extract_elements":
-                    result = await evaluate_tool_script(page, EXTRACT_ELEMENTS_SCRIPT, args.get("filter", "visible"))
-                    llm_caller.set_tool_result(tc_id, result.get("pageContent", str(result)))
-                elif tc_name == "find":
-                    text = args.get("text", "")
-                    result = await evaluate_tool_script(page, FIND_SCRIPT, text)
-                    dom_tree = result.get("pageContent", str(result))
-                    lines = [line for line in dom_tree.split("\n") if text.lower() in line.lower()]
-                    if lines:
-                        llm_caller.set_tool_result(tc_id, f"Found {len(lines)} element(s) matching \"{text}\":\n" + "\n".join(lines[:20]))
-                    else:
-                        llm_caller.set_tool_result(tc_id, f'No elements matching "{text}" found on the page.')
-                elif tc_name == "set_element_value":
-                    result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, args.get("ref", ""), args.get("value", ""))
-                    llm_caller.set_tool_result(tc_id, result.get("message", str(result)))
-                elif tc_name == "execute_js":
-                    js_code = args.get("text", "")
-                    raw = await page.evaluate(js_code)
-                    if raw is None:
-                        llm_caller.set_tool_result(tc_id, "undefined")
-                    elif isinstance(raw, (dict, list)):
-                        llm_caller.set_tool_result(tc_id, _json.dumps(raw, indent=2))
-                    else:
-                        llm_caller.set_tool_result(tc_id, str(raw))
-
-            # Flush DOM tool results into conversation. Browser actions stay pending
-            # for flush_pending_tool_results on the next step.
-            llm_caller.flush_pending_tool_results(scraped_page.screenshots[0], scraped_page.url)
-
-            # If there were also browser actions, break and convert them
-            browser_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] not in EXPANDED_TOOL_ACTIONS]
-            if browser_tool_calls:
-                break
 
         return parse_navigator_response_to_actions(
             nav_resp, window_dimension["width"], window_dimension["height"], task=task, step=step,

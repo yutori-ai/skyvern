@@ -31,6 +31,7 @@ class ActionType(StrEnum):
     MOVE = "move"
     DRAG = "drag"
     LEFT_MOUSE = "left_mouse"
+    EXECUTE_JS = "execute_js"
 
     def is_web_action(self) -> bool:
         return self in [

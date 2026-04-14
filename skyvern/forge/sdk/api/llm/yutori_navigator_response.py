@@ -8,11 +8,17 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from yutori.navigator import denormalize_coordinates, map_key_to_playwright, map_keys_individual
+from yutori.navigator.tools import (
+    EXTRACT_ELEMENTS_SCRIPT,
+    FIND_SCRIPT,
+    SET_ELEMENT_VALUE_SCRIPT,
+)
 
 from skyvern.webeye.actions.actions import (
     ClickAction,
     CompleteAction,
     DragAction,
+    ExecuteJsAction,
     GoBackAction,
     GoForwardAction,
     GotoUrlAction,
@@ -32,10 +38,6 @@ if TYPE_CHECKING:
 LOG = structlog.get_logger()
 
 Action = Any
-
-# Expanded tool set actions that are handled inline by the agent loop
-# (they return data to Navigator, not browser navigation actions).
-EXPANDED_TOOL_ACTIONS = frozenset({"extract_elements", "find", "set_element_value", "execute_js"})
 
 
 class YutoriNavigatorActionType(StrEnum):
@@ -93,9 +95,6 @@ def parse_navigator_response_to_actions(
         name = tc["function"]["name"] if isinstance(tc, dict) else tc.function.name
         arguments = tc["function"]["arguments"] if isinstance(tc, dict) else tc.function.arguments
 
-        # Skip expanded tool set actions — handled inline by agent loop
-        if name in EXPANDED_TOOL_ACTIONS:
-            continue
         try:
             args = json.loads(arguments)
             action = _convert_tool_call(name, args, viewport_width, viewport_height, task, step, idx)
@@ -108,12 +107,6 @@ def parse_navigator_response_to_actions(
             LOG.warning("Navigator unknown tool call", name=name)
 
     if not actions and tool_calls:
-        all_names = [
-            tc["function"]["name"] if isinstance(tc, dict) else tc.function.name
-            for tc in tool_calls
-        ]
-        if all(n in EXPANDED_TOOL_ACTIONS for n in all_names):
-            return []
         base_params = _base_params(task, step, 0)
         return [CompleteAction(data_extraction_goal="Task completed (unknown action types)", **base_params)]
 
@@ -179,17 +172,17 @@ def _convert_tool_call(
     if action_type == YutoriNavigatorActionType.MOUSE_MOVE:
         if coord is not None:
             return MoveAction(x=x, y=y, **bp)
-        return WaitAction(**bp)
+        return NullAction(**bp)
 
     if action_type == YutoriNavigatorActionType.MOUSE_DOWN:
         if coord is not None:
             return LeftMouseAction(x=x, y=y, direction="down", **bp)
-        return WaitAction(**bp)
+        return NullAction(**bp)
 
     if action_type == YutoriNavigatorActionType.MOUSE_UP:
         if coord is not None:
             return LeftMouseAction(x=x, y=y, direction="up", **bp)
-        return WaitAction(**bp)
+        return NullAction(**bp)
 
     if action_type == YutoriNavigatorActionType.DRAG:
         raw_start = args.get("start_coordinates")
@@ -201,7 +194,7 @@ def _convert_tool_call(
         if raw_start:
             sx, sy = denormalize_coordinates(raw_start, viewport_width, viewport_height)
             return DragAction(start_x=sx, start_y=sy, path=[], **bp)
-        return WaitAction(**bp)
+        return NullAction(**bp)
 
     # ---- Keyboard actions ----
     if action_type == YutoriNavigatorActionType.TYPE:
@@ -216,7 +209,7 @@ def _convert_tool_call(
     if action_type == YutoriNavigatorActionType.HOLD_KEY:
         key_expr = args.get("key", "")
         if not key_expr:
-            return WaitAction(**bp)
+            return NullAction(**bp)
         return KeypressAction(keys=map_keys_individual(key_expr), hold=True, **bp)
 
     # ---- Scroll ----
@@ -237,7 +230,7 @@ def _convert_tool_call(
     if action_type == YutoriNavigatorActionType.GOTO_URL:
         url = args.get("url", "")
         if not url:
-            return WaitAction(**bp)
+            return NullAction(**bp)
         return GotoUrlAction(url=url, **bp)
 
     if action_type == YutoriNavigatorActionType.GO_BACK:
@@ -255,11 +248,28 @@ def _convert_tool_call(
         return CompleteAction(data_extraction_goal=summary, **bp)
 
     if action_type in (YutoriNavigatorActionType.WAIT, YutoriNavigatorActionType.SLEEP):
-        return WaitAction(**bp)
+        return NullAction(**bp)
 
     # Legacy extract action
     if action_type == YutoriNavigatorActionType.EXTRACT_CONTENT:
         summary = args.get("summary") or args.get("query") or args.get("goal") or "Content extracted"
         return CompleteAction(data_extraction_goal=summary, **bp)
+
+    # ---- Expanded tool set (JS execution) ----
+    if action_type == YutoriNavigatorActionType.EXTRACT_ELEMENTS:
+        filter_type = json.dumps(args.get("filter", "visible"))
+        return ExecuteJsAction(js_code=f"({EXTRACT_ELEMENTS_SCRIPT})({filter_type})", **bp)
+
+    if action_type == YutoriNavigatorActionType.FIND:
+        text = json.dumps(args.get("text", ""))
+        return ExecuteJsAction(js_code=f"({FIND_SCRIPT})({text})", **bp)
+
+    if action_type == YutoriNavigatorActionType.SET_ELEMENT_VALUE:
+        ref = json.dumps(args.get("ref", ""))
+        value = json.dumps(args.get("value", ""))
+        return ExecuteJsAction(js_code=f"({SET_ELEMENT_VALUE_SCRIPT})({ref}, {value})", **bp)
+
+    if action_type == YutoriNavigatorActionType.EXECUTE_JS:
+        return ExecuteJsAction(js_code=args.get("text", ""), **bp)
 
     return WaitAction(**bp)

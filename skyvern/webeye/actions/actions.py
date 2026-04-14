@@ -215,6 +215,8 @@ class Action(BaseModel):
                 return GoForwardAction.model_validate(value)
             elif action_type is ActionType.CLOSE_PAGE:
                 return ClosePageAction.model_validate(value)
+            elif action_type is ActionType.EXECUTE_JS:
+                return ExecuteJsAction.model_validate(value)
             else:
                 raise ValueError(f"Unsupported action type: {action_type}")
         else:
@@ -403,6 +405,11 @@ class LeftMouseAction(Action):
     direction: Literal["down", "up"]
     x: int | None = None
     y: int | None = None
+
+
+class ExecuteJsAction(Action):
+    action_type: ActionType = ActionType.EXECUTE_JS
+    js_code: str
 
 
 class ScrapeResult(BaseModel):
