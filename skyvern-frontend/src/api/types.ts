@@ -448,6 +448,7 @@ export const TaskRunType = {
   OpenaiCua: "openai_cua",
   AnthropicCua: "anthropic_cua",
   UiTars: "ui_tars",
+  YutoriNavigator: "yutori_navigator",
 } as const;
 
 export type TaskRunType = (typeof TaskRunType)[keyof typeof TaskRunType];

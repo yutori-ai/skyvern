@@ -6,7 +6,7 @@ Integration of Yutori's Navigator computer-use model into Skyvern's browser auto
 
 ## Architecture
 
-Navigator is wired into Skyvern as a CUA engine (`engine: "yutori-navigator.5"`) alongside `openai-cua`, `anthropic-cua`, and `ui-tars`. The integration uses the Yutori SDK for API calls, key mapping, coordinate conversion, screenshot encoding, payload management, and expanded tool execution.
+Navigator is wired into Skyvern as a CUA engine (`engine: "yutori-navigator"`) alongside `openai-cua`, `anthropic-cua`, and `ui-tars`. The integration uses the Yutori SDK for API calls, key mapping, coordinate conversion, screenshot encoding, payload management, and expanded tool execution.
 
 ### Key files
 
@@ -30,7 +30,7 @@ Navigator is wired into Skyvern as a CUA engine (`engine: "yutori-navigator.5"`)
 
 ## How Navigator Is Invoked
 
-1. User submits a task to `POST /v1/run/tasks` with `engine: "yutori-navigator.5"`.
+1. User submits a task to `POST /v1/run/tasks` with `engine: "yutori-navigator"`.
 2. Skyvern creates a browser session and starts the agentic loop.
 3. Each step: screenshot -> `screenshot_to_data_url()` -> Navigator API call -> tool_calls response.
 4. **Browser actions** (click, scroll, type, etc.) -> converted to Skyvern actions and executed by Playwright.
@@ -132,7 +132,7 @@ Submit a task:
 curl -X POST http://localhost:8000/v1/run/tasks \
   -H "Content-Type: application/json" \
   -H "x-api-key: <token>" \
-  -d '{"prompt": "Your task here", "engine": "yutori-navigator.5", "url": "https://example.com"}'
+  -d '{"prompt": "Your task here", "engine": "yutori-navigator", "url": "https://example.com"}'
 ```
 
 Check status: `curl http://localhost:8000/v1/runs/<run_id> -H "x-api-key: <token>"`

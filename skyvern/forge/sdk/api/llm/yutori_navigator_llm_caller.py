@@ -16,7 +16,6 @@ import logging
 from typing import Any
 
 import structlog
-
 from yutori.navigator import format_stop_and_summarize, screenshot_to_data_url
 
 from dataclasses import dataclass, field

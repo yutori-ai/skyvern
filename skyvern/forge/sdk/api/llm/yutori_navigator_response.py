@@ -7,7 +7,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import structlog
-
 from yutori.navigator import denormalize_coordinates, map_key_to_playwright, map_keys_individual
 
 from skyvern.webeye.actions.actions import (
