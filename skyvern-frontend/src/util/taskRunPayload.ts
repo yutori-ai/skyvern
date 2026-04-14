@@ -16,10 +16,10 @@ type TaskRunPayload = {
   engine?: RunEngine | null;
 };
 
-// Helper to trim and check for empty strings (also filters the literal string "null")
+// Helper to trim and check for empty strings
 const trim = (s: string | null | undefined): string | undefined => {
   const t = s?.trim();
-  return t && t.length > 0 && t !== "null" ? t : undefined;
+  return t && t.length > 0 ? t : undefined;
 };
 
 // Helper to format navigation_payload as a string
