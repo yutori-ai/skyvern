@@ -1961,8 +1961,16 @@ class ForgeAgent:
         if step.order == 0 and step.retry_index == 0:
             llm_caller.initialize_conversation(task)
 
-        # Detect last step — send stop-and-summarize instead of normal tool result
-        max_steps = task.max_steps_per_run or settings.MAX_STEPS_PER_RUN
+        # Detect last step — send stop-and-summarize instead of normal tool result.
+        # Use the same priority chain as the max-steps enforcement in
+        # _handle_completed_step_with_parallel_verification.
+        context = skyvern_context.current()
+        override_max_steps = context.max_steps_override if context else None
+        max_steps = (
+            override_max_steps
+            or task.max_steps_per_run
+            or settings.MAX_STEPS_PER_RUN
+        )
         is_last_step = step.order + 1 >= max_steps
 
         if is_last_step:
