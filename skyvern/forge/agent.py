@@ -1998,25 +1998,22 @@ class ForgeAgent:
             if not dom_tool_calls:
                 break  # Only browser actions — proceed to conversion
 
-            # Execute DOM tools inline via the SDK's bundled JS scripts
+            # Execute only DOM tool calls inline. Browser action tool calls
+            # are left for add_tool_result on the next step via _pending_tool_calls.
             page = await scraped_page._browser_state.get_working_page()
-            script_map = {
-                "extract_elements": EXTRACT_ELEMENTS_SCRIPT,
-                "find": FIND_SCRIPT,
-                "set_element_value": SET_ELEMENT_VALUE_SCRIPT,
-                "execute_js": None,
-            }
+            dom_tc_ids = set()
 
-            for tc in nav_resp.tool_calls:
+            for tc in dom_tool_calls:
                 tc_name = tc["function"]["name"]
                 args = _json.loads(tc["function"]["arguments"])
                 tc_id = tc["id"]
+                dom_tc_ids.add(tc_id)
                 if tc_name == "extract_elements":
-                    result = await evaluate_tool_script(page, script_map["extract_elements"], args.get("filter", "visible"))
+                    result = await evaluate_tool_script(page, EXTRACT_ELEMENTS_SCRIPT, args.get("filter", "visible"))
                     llm_caller.add_dom_tool_result(tc_id, result.get("pageContent", str(result)))
                 elif tc_name == "find":
                     text = args.get("text", "")
-                    result = await evaluate_tool_script(page, script_map["find"], text)
+                    result = await evaluate_tool_script(page, FIND_SCRIPT, text)
                     dom_tree = result.get("pageContent", str(result))
                     lines = [line for line in dom_tree.split("\n") if text.lower() in line.lower()]
                     if lines:
@@ -2024,7 +2021,7 @@ class ForgeAgent:
                     else:
                         llm_caller.add_dom_tool_result(tc_id, f'No elements matching "{text}" found on the page.')
                 elif tc_name == "set_element_value":
-                    result = await evaluate_tool_script(page, script_map["set_element_value"], args.get("ref", ""), args.get("value", ""))
+                    result = await evaluate_tool_script(page, SET_ELEMENT_VALUE_SCRIPT, args.get("ref", ""), args.get("value", ""))
                     llm_caller.add_dom_tool_result(tc_id, result.get("message", str(result)))
                 elif tc_name == "execute_js":
                     js_code = args.get("text", "")
@@ -2035,9 +2032,15 @@ class ForgeAgent:
                         llm_caller.add_dom_tool_result(tc_id, _json.dumps(raw, indent=2))
                     else:
                         llm_caller.add_dom_tool_result(tc_id, str(raw))
-                else:
-                    llm_caller.add_dom_tool_result(tc_id, f"Current URL: {scraped_page.url}")
 
+            # Remove DOM tool calls from _pending_tool_calls so add_tool_result
+            # on the next step doesn't create duplicate responses for them.
+            llm_caller._pending_tool_calls = [
+                tc for tc in llm_caller._pending_tool_calls if tc["id"] not in dom_tc_ids
+            ]
+
+            # If there were also browser actions mixed in, break and convert them.
+            # The remaining browser _pending_tool_calls will be flushed by add_tool_result.
             browser_tool_calls = [tc for tc in nav_resp.tool_calls if tc["function"]["name"] not in EXPANDED_TOOL_ACTIONS]
             if browser_tool_calls:
                 break
