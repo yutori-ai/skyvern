@@ -1966,7 +1966,7 @@ class ForgeAgent:
         is_last_step = step.order + 1 >= max_steps
 
         if is_last_step:
-            llm_caller.add_stop_and_summarize(scraped_page.screenshots[0])
+            llm_caller.add_stop_and_summarize(scraped_page.screenshots[0], scraped_page.url)
         else:
             llm_caller.add_tool_result(scraped_page.screenshots[0], scraped_page.url)
 

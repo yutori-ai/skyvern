@@ -161,13 +161,41 @@ class YutoriNavigatorLLMCaller(LLMCaller):
             "content": result,
         })
 
-    def add_stop_and_summarize(self, screenshot_bytes: bytes) -> None:
+    def add_stop_and_summarize(self, screenshot_bytes: bytes, current_url: str) -> None:
         """Append a stop-and-summarize user message for the last step.
 
         Called when max steps is about to be reached, so the model produces
         a summary instead of another action. This becomes part of the normal
         step's LLM call, keeping costs and artifacts tracked.
+
+        Flushes any pending tool_call responses first so the conversation
+        stays valid (assistant tool_calls must be followed by tool responses
+        before a user message).
         """
+        # Flush pending tool calls from the previous step's response
+        if self._pending_tool_calls:
+            data_url = screenshot_to_data_url(screenshot_bytes)
+            image_content = {"type": "image_url", "image_url": {"url": data_url}}
+            for i, tc in enumerate(self._pending_tool_calls):
+                result_text = _describe_action_result(tc["name"], tc["arguments"])
+                result_text += f"\nCurrent URL: {current_url}"
+                if i < len(self._pending_tool_calls) - 1:
+                    self.message_history.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": result_text,
+                    })
+                else:
+                    self.message_history.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": [
+                            {"type": "text", "text": result_text},
+                            image_content,
+                        ],
+                    })
+            self._pending_tool_calls = []
+
         task_goal = self._task.navigation_goal if self._task else "the given task"
         data_url = screenshot_to_data_url(screenshot_bytes)
         stop_message = format_stop_and_summarize(task_goal)
