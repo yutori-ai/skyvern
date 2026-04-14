@@ -1555,15 +1555,16 @@ class ForgeAgent:
                 nav_caller = LLMCallerManager.get_llm_caller(task.task_id)
                 if isinstance(nav_caller, YutoriNavigatorLLMCaller):
                     for action, results in detailed_agent_step_output.actions_and_results:
-                        if results:
-                            r = results[0]
-                            if r.success:
-                                # Use actual data (JS output) when available,
-                                # otherwise derive description from pending tool call
-                                result_str = str(r.data) if r.data is not None else None
-                            else:
-                                result_str = f"[ERROR] {r.exception_message or 'Action failed'}"
-                            nav_caller.update_pending_result(action.action_order, result_str)
+                        if not results:
+                            continue
+                        r = results[0]
+                        if r.success:
+                            # Use actual data when available (JS output, etc.)
+                            result_str = str(r.data) if r.data is not None else None
+                        else:
+                            # Provide error details so the model can recover
+                            result_str = f"ERROR: {r.exception_message or 'Action failed'}"
+                        nav_caller.update_pending_result(action.action_order, result_str)
 
             # Check if Skyvern already returned a complete action, if so, don't run user goal check
             has_decisive_action = False
