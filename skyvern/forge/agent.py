@@ -1549,6 +1549,15 @@ class ForgeAgent:
                 if secret_key in context.totp_codes:
                     context.totp_codes.pop(secret_key)
 
+            # Update Navigator caller with actual action results so the next
+            # step's tool responses include real execution data (e.g. JS output).
+            if engine == RunEngine.yutori_navigator and detailed_agent_step_output and detailed_agent_step_output.actions_and_results:
+                nav_caller = LLMCallerManager.get_llm_caller(task.task_id)
+                if isinstance(nav_caller, YutoriNavigatorLLMCaller):
+                    for action, results in detailed_agent_step_output.actions_and_results:
+                        if results and results[0].success and results[0].data is not None:
+                            nav_caller.update_pending_result(action.action_order, str(results[0].data))
+
             # Check if Skyvern already returned a complete action, if so, don't run user goal check
             has_decisive_action = False
             if detailed_agent_step_output and detailed_agent_step_output.actions_and_results:

@@ -99,8 +99,8 @@ class YutoriNavigatorLLMCaller(LLMCaller):
     def __init__(self, llm_key: str, screenshot_scaling_enabled: bool = False):
         super().__init__(llm_key, screenshot_scaling_enabled)
         self._conversation_initialized = False
-        self._pending_tool_calls: list[dict[str, str]] = []
-        # Each entry: {"id": str, "name": str, "arguments": str}
+        self._pending_tool_calls: list[dict[str, Any]] = []
+        # Each entry: {"id": str, "name": str, "arguments": str, "result": str | None}
         self._task: Task | None = None
 
     def initialize_conversation(self, task: Task) -> None:
@@ -112,11 +112,17 @@ class YutoriNavigatorLLMCaller(LLMCaller):
             self._conversation_initialized = True
             LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
 
-    def flush_pending_tool_results(self, screenshot_bytes: bytes, current_url: str) -> None:
-        """Flush pending tool call results into the message history.
+    def update_pending_result(self, action_order: int, result: str) -> None:
+        """Set the actual execution result for a pending tool call by action order."""
+        if 0 <= action_order < len(self._pending_tool_calls):
+            self._pending_tool_calls[action_order]["result"] = result
 
-        Each tool call gets a descriptive result string. The last one includes
-        the screenshot so the model sees the current page state.
+    def flush_pending_tool_results(self, screenshot_bytes: bytes, current_url: str) -> None:
+        """Flush all pending tool call results into the message history.
+
+        Uses actual execution results when available (e.g. JS output from
+        ExecuteJsAction), falls back to a descriptive string for actions
+        without explicit results. The last tool call includes the screenshot.
         """
         if not self._pending_tool_calls:
             return
@@ -125,7 +131,8 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         image_content = {"type": "image_url", "image_url": {"url": data_url}}
 
         for i, tc in enumerate(self._pending_tool_calls):
-            result_text = _describe_browser_action(tc["name"], tc["arguments"])
+            # Use actual result if set by update_pending_result, otherwise describe
+            result_text = tc.get("result") or _describe_browser_action(tc["name"], tc["arguments"])
             result_text += f"\nCurrent URL: {current_url}"
 
             if i < len(self._pending_tool_calls) - 1:
@@ -135,7 +142,6 @@ class YutoriNavigatorLLMCaller(LLMCaller):
                     "content": result_text,
                 })
             else:
-                # Last tool call gets the screenshot
                 self.message_history.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
@@ -234,7 +240,7 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         if tool_calls_data:
             assistant_msg["tool_calls"] = tool_calls_data
             self._pending_tool_calls = [
-                {"id": tc["id"], "name": tc["function"]["name"], "arguments": tc["function"]["arguments"]}
+                {"id": tc["id"], "name": tc["function"]["name"], "arguments": tc["function"]["arguments"], "result": None}
                 for tc in tool_calls_data
             ]
         self.message_history.append(assistant_msg)
