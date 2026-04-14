@@ -91,8 +91,6 @@ Set via `YUTORI_TOOL_SET` in `.env`.
 ### Navigator request logs
 
 - **Log file**: `/tmp/yutori_skyvern.log` -- `task_id`, `step_order`, `request_id`, `finish_reason`, `tool_calls` per API call
-- **Dashboard**: `https://dashboard.yutori.ai/n1/{date}/{request_id}/`
-- **S3 logs**: Bucket `n1-api-logs-prod`, path `{date}/{request_id}/`, contains `request.json` and `response.json`
 
 ### Evaluation
 
