@@ -1558,7 +1558,9 @@ class ForgeAgent:
                         if results:
                             r = results[0]
                             if r.success:
-                                result_str = str(r.data) if r.data is not None else "OK"
+                                # Use actual data (JS output) when available,
+                                # otherwise derive description from pending tool call
+                                result_str = str(r.data) if r.data is not None else None
                             else:
                                 result_str = f"[ERROR] {r.exception_message or 'Action failed'}"
                             nav_caller.update_pending_result(action.action_order, result_str)

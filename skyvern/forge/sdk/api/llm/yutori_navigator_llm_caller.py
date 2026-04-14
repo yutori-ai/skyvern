@@ -41,8 +41,45 @@ class NavigatorResponse:
     finish_reason: str | None = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     """Each tool_call is {"id": ..., "function": {"name": ..., "arguments": ...}}"""
+def _action_result_description(name: str, arguments_json: str) -> str:
+    """Derive an action result description from the tool call, matching the SDK example.
 
+    Used as a fallback when Skyvern's ActionResult has no data (e.g. browser actions).
+    """
+    try:
+        args = json.loads(arguments_json)
+    except (json.JSONDecodeError, TypeError):
+        args = {}
 
+    descs = {
+        "left_click": "Clicked 1x with left",
+        "double_click": "Clicked 2x with left",
+        "triple_click": "Clicked 3x with left",
+        "middle_click": "Clicked 1x with middle",
+        "right_click": "Clicked 1x with right",
+        "mouse_move": "Mouse moved and hovering",
+        "mouse_down": "Mouse button pressed",
+        "mouse_up": "Mouse button released",
+        "drag": "Dragged successfully",
+        "go_back": "Navigated back",
+        "go_forward": "Navigated forward",
+        "refresh": "Refreshed the page",
+    }
+    if name in descs:
+        return descs[name]
+    if name == "scroll":
+        return f"Scrolled {args.get('direction', 'down')}"
+    if name == "type":
+        return f"Typed {len(args.get('text', ''))} characters"
+    if name == "key_press":
+        return f"Pressed key: {args.get('key', '')}"
+    if name == "hold_key":
+        return f"Held key: {args.get('key', '')}"
+    if name == "goto_url":
+        return f"Navigated to {args.get('url', '')}"
+    if name == "wait":
+        return f"Waited {args.get('duration', 5)}s"
+    return f"Executed {name}"
 
 
 class YutoriNavigatorLLMCaller(LLMCaller):
@@ -93,7 +130,7 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         image_content = {"type": "image_url", "image_url": {"url": data_url}}
 
         for i, tc in enumerate(self._pending_tool_calls):
-            result_text = tc.get("result") or "OK"
+            result_text = tc.get("result") or _action_result_description(tc["name"], tc["arguments"])
             result_text += f"\nCurrent URL: {current_url}"
 
             if i < len(self._pending_tool_calls) - 1:
