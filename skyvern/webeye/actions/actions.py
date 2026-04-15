@@ -296,6 +296,10 @@ class DownloadFileAction(Action):
 
 class NullAction(Action):
     action_type: ActionType = ActionType.NULL_ACTION
+    # Some integrations use NullAction as a successful no-op placeholder that still
+    # needs to wait or surface a tool-result string back to the model.
+    sleep_seconds: float = 0
+    result_data: dict[str, Any] | list | str | None = None
 
 
 class SolveCaptchaAction(Action):
