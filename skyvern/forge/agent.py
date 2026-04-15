@@ -1969,7 +1969,7 @@ class ForgeAgent:
             raise ValueError(f"Expected YutoriNavigatorLLMCaller, got {type(llm_caller)}")
         if not scraped_page.screenshots:
             raise ValueError("No screenshots found for Yutori Navigator action generation")
-        if step.order == 0 and step.retry_index == 0:
+        if step.order == 0:
             llm_caller.initialize_conversation(task)
 
         # Detect last step — send stop-and-summarize instead of normal tool result.

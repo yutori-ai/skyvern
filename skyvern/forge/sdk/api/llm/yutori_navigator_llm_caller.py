@@ -103,13 +103,12 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         self._task: Task | None = None
 
     def initialize_conversation(self, task: Task) -> None:
-        """Initialize conversation with task description. Called once at step 0."""
-        if not self._conversation_initialized:
-            self._task = task
-            self.message_history = []
-            self._pending_tool_calls = []
-            self._conversation_initialized = True
-            LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
+        """Initialize (or re-initialize) conversation. Resets history so retries start fresh."""
+        self._task = task
+        self.message_history = []
+        self._pending_tool_calls = []
+        self._conversation_initialized = True
+        LOG.debug("Initialized Yutori Navigator conversation", task_id=task.task_id)
 
     def update_pending_result(self, tool_call_id: str, result: str | None) -> None:
         """Set the actual execution result for a pending tool call by tool_call_id."""
