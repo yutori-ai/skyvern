@@ -228,7 +228,8 @@ def _convert_tool_call(
                 return NullAction(result_data="Scrolled to element", **bp)
             return NullAction(result_data="ERROR: Ref resolution failed for scroll target", **bp)
         direction = args.get("direction", "down")
-        amount = int(args.get("amount", 3)) * 100
+        amount_value = args.get("amount")
+        amount = int(3 if amount_value is None else amount_value) * 100
         if direction == "up":
             return ScrollAction(x=x, y=y, scroll_x=0, scroll_y=-amount, **bp)
         if direction == "down":
@@ -261,7 +262,8 @@ def _convert_tool_call(
         return CompleteAction(data_extraction_goal=summary, **bp)
 
     if action_type in (YutoriNavigatorActionType.WAIT, YutoriNavigatorActionType.SLEEP):
-        duration = max(0.0, min(float(args.get("duration", 5)), 100.0))
+        duration_value = args.get("duration")
+        duration = max(0.0, min(float(5 if duration_value is None else duration_value), 100.0))
         return NullAction(
             sleep_seconds=duration,
             result_data=f"Waited {duration:g}s",

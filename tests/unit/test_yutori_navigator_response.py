@@ -34,6 +34,22 @@ def test_parse_wait_tool_returns_sleeping_null_action() -> None:
     assert action.result_data == "Waited 7s"
 
 
+def test_parse_wait_tool_defaults_when_duration_is_null() -> None:
+    response = NavigatorResponse(
+        tool_calls=[
+            _tool_call("wait", '{"duration": null}'),
+        ]
+    )
+
+    actions = parse_navigator_response_to_actions(response, viewport_width=1280, viewport_height=800)
+
+    assert len(actions) == 1
+    action = actions[0]
+    assert isinstance(action, NullAction)
+    assert action.sleep_seconds == 5
+    assert action.result_data == "Waited 5s"
+
+
 def test_parse_ref_scroll_returns_null_action_without_extra_scroll() -> None:
     response = NavigatorResponse(
         tool_calls=[
@@ -63,6 +79,21 @@ def test_parse_ref_scroll_accepts_singular_coordinate_key() -> None:
     action = actions[0]
     assert isinstance(action, NullAction)
     assert action.result_data == "Scrolled to element"
+
+
+def test_parse_scroll_defaults_when_amount_is_null() -> None:
+    response = NavigatorResponse(
+        tool_calls=[
+            _tool_call("scroll", '{"coordinates": [500, 250], "amount": null, "direction": "down"}'),
+        ]
+    )
+
+    actions = parse_navigator_response_to_actions(response, viewport_width=1280, viewport_height=800)
+
+    assert len(actions) == 1
+    action = actions[0]
+    assert action.action_type == "scroll"
+    assert action.scroll_y == 300
 
 
 @pytest.mark.asyncio
