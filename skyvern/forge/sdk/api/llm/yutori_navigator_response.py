@@ -28,6 +28,7 @@ from skyvern.webeye.actions.actions import (
     KeypressAction,
     LeftMouseAction,
     MoveAction,
+    NullAction,
     ReloadPageAction,
     ScrollAction,
 )
