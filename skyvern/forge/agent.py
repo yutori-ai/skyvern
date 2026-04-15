@@ -79,6 +79,8 @@ from skyvern.forge.sdk.api.llm.api_handler_factory import LLMAPIHandlerFactory, 
 from skyvern.forge.sdk.api.llm.config_registry import LLMConfigRegistry
 from skyvern.forge.sdk.api.llm.exceptions import LLM_PROVIDER_ERROR_RETRYABLE_TASK_TYPE, LLM_PROVIDER_ERROR_TYPE
 from skyvern.forge.sdk.api.llm.ui_tars_llm_caller import UITarsLLMCaller
+from skyvern.forge.sdk.api.llm.yutori_navigator_llm_caller import NavigatorResponse, YutoriNavigatorLLMCaller
+from skyvern.forge.sdk.api.llm.yutori_navigator_response import parse_navigator_response_to_actions
 from skyvern.forge.sdk.api.llm.vertex_cache_manager import get_cache_manager
 from skyvern.forge.sdk.artifact.manager import BulkArtifactCreationRequest
 from skyvern.forge.sdk.artifact.models import ArtifactType
@@ -607,9 +609,17 @@ class ForgeAgent:
                     ui_tars_llm_caller.initialize_conversation(task)
                     llm_caller = ui_tars_llm_caller
 
+            if engine == RunEngine.yutori_navigator and not llm_caller:
+                llm_caller = LLMCallerManager.get_llm_caller(task.task_id)
+                if not llm_caller:
+                    llm_key = task.llm_key or settings.YUTORI_LLM_KEY
+                    yutori_caller = YutoriNavigatorLLMCaller(llm_key=llm_key, screenshot_scaling_enabled=False)
+                    yutori_caller.initialize_conversation(task)
+                    llm_caller = yutori_caller
+
             # TODO: remove the code after migrating everything to llm callers
             # currently, only anthropic cua and ui_tars tasks use llm_caller
-            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars] and llm_caller:
+            if engine in [RunEngine.anthropic_cua, RunEngine.ui_tars, RunEngine.yutori_navigator] and llm_caller:
                 LLMCallerManager.set_llm_caller(task.task_id, llm_caller)
 
             step, detailed_output = await self.agent_step(
@@ -1200,6 +1210,14 @@ class ForgeAgent:
                     scraped_page=scraped_page,
                     llm_caller=llm_caller,
                 )
+            elif engine == RunEngine.yutori_navigator:
+                assert llm_caller is not None
+                actions = await self._generate_yutori_navigator_actions(
+                    task=task,
+                    step=step,
+                    scraped_page=scraped_page,
+                    llm_caller=llm_caller,
+                )
 
             else:
                 if not task.navigation_goal and not isinstance(task_block, ValidationBlock):
@@ -1646,6 +1664,23 @@ class ForgeAgent:
                 if secret_key in context.totp_codes:
                     context.totp_codes.pop(secret_key)
 
+            # Update Navigator caller with actual action results so the next
+            # step's tool responses include real execution data.
+            if engine == RunEngine.yutori_navigator and detailed_agent_step_output and detailed_agent_step_output.actions_and_results:
+                nav_caller = LLMCallerManager.get_llm_caller(task.task_id)
+                if isinstance(nav_caller, YutoriNavigatorLLMCaller):
+                    for action, results in detailed_agent_step_output.actions_and_results:
+                        if not results or not action.tool_call_id:
+                            continue
+                        r = results[-1]
+                        if r.success:
+                            # Use actual data when available (JS output, etc.)
+                            result_str = str(r.data) if r.data is not None else None
+                        else:
+                            # Provide error details so the model can recover
+                            result_str = f"ERROR: {r.exception_message or 'Action failed'}"
+                        nav_caller.update_pending_result(action.tool_call_id, result_str)
+
             # Check if Skyvern already returned a complete action, if so, don't run user goal check
             has_decisive_action = False
             if detailed_agent_step_output and detailed_agent_step_output.actions_and_results:
@@ -2032,6 +2067,79 @@ class ForgeAgent:
             actions_count=len(actions),
         )
 
+        return actions
+
+    async def _generate_yutori_navigator_actions(
+        self,
+        task: Task,
+        step: Step,
+        scraped_page: ScrapedPage,
+        llm_caller: LLMCaller,
+    ) -> list[Action]:
+        import json as _json
+
+        from yutori.navigator.tools import GET_ELEMENT_BY_REF_SCRIPT, evaluate_tool_script
+
+        if not isinstance(llm_caller, YutoriNavigatorLLMCaller):
+            raise ValueError(f"Expected YutoriNavigatorLLMCaller, got {type(llm_caller)}")
+        if not scraped_page.screenshots:
+            raise ValueError("No screenshots found for Yutori Navigator action generation")
+        if step.order == 0:
+            llm_caller.initialize_conversation(task)
+
+        # Detect last step — send stop-and-summarize instead of normal tool result.
+        context = skyvern_context.current()
+        override_max_steps = context.max_steps_override if context else None
+        max_steps = (
+            override_max_steps
+            or task.max_steps_per_run
+            or settings.MAX_STEPS_PER_RUN
+        )
+        is_last_step = step.order + 1 >= max_steps
+
+        if is_last_step:
+            llm_caller.add_stop_and_summarize(scraped_page.screenshots[0], scraped_page.url)
+        elif not llm_caller.message_history:
+            llm_caller.add_initial_message(scraped_page.screenshots[0])
+        else:
+            llm_caller.flush_pending_tool_results(scraped_page.screenshots[0], scraped_page.url)
+
+        nav_resp = await llm_caller.generate_response(step)
+
+        # Resolve ref-based targeting to coordinates before parsing.
+        # Navigator can target elements by ref ID instead of coordinates;
+        # we resolve inline so the parser always sees coordinates.
+        if nav_resp.tool_calls:
+            page = await scraped_page._browser_state.get_working_page()
+            for tc in nav_resp.tool_calls:
+                args = _json.loads(tc["function"]["arguments"])
+                if args.get("ref") and not args.get("coordinates"):
+                    result = await evaluate_tool_script(page, GET_ELEMENT_BY_REF_SCRIPT, args["ref"])
+                    if result.get("success"):
+                        args["coordinates"] = result["coordinates"]
+                        tc["function"]["arguments"] = _json.dumps(args)
+
+        window_dimension = (
+            cast(Resolution, scraped_page.window_dimension)
+            if scraped_page.window_dimension
+            else Resolution(width=settings.BROWSER_WIDTH, height=settings.BROWSER_HEIGHT)
+        )
+
+        actions = parse_navigator_response_to_actions(
+            nav_resp, window_dimension["width"], window_dimension["height"], task=task, step=step,
+        )
+        if nav_resp.tool_calls and not actions:
+            tool_names = [tool_call["function"]["name"] for tool_call in nav_resp.tool_calls]
+            LOG.warning(
+                "Unsupported Yutori Navigator tool calls returned no executable actions",
+                task_id=task.task_id,
+                step_order=step.order,
+                tool_calls=tool_names,
+            )
+            raise FailedToParseActionInstruction(
+                reason=f"Unsupported Yutori Navigator tool calls: {', '.join(tool_names)}",
+                error_type="UNSUPPORTED_YUTORI_TOOL_CALLS",
+            )
         return actions
 
     async def _speculate_next_step_plan(
@@ -3545,22 +3653,32 @@ class ForgeAgent:
             task_id=task.task_id,
             organization_id=task.organization_id,
         )
+        complete_action_content: str | None = None
         for step in reversed(steps):
             if step.status != StepStatus.completed:
                 continue
             if not step.output or not step.output.actions_and_results:
                 continue
             for action, action_results in step.output.actions_and_results:
-                if action.action_type != ActionType.EXTRACT:
-                    continue
+                if action.action_type == ActionType.EXTRACT:
+                    for action_result in action_results:
+                        if action_result.success:
+                            LOG.info(
+                                "Extracted information for task",
+                                extracted_information=action_result.data,
+                            )
+                            return action_result.data
+                # For CUA-style engines (e.g. yutori-navigator), the model returns its answer
+                # inside the CompleteAction's data_extraction_goal field. Surface that
+                # as extracted_information when no EXTRACT action result is found.
+                if action.action_type == ActionType.COMPLETE and complete_action_content is None:
+                    content = getattr(action, "data_extraction_goal", None)
+                    if content and content != "Task completed (unknown action types)":
+                        complete_action_content = content
 
-                for action_result in action_results:
-                    if action_result.success:
-                        LOG.info(
-                            "Extracted information for task",
-                            extracted_information=action_result.data,
-                        )
-                        return action_result.data
+        if complete_action_content:
+            LOG.info("Using CompleteAction content as extracted information", task_id=task.task_id)
+            return complete_action_content
 
         if task.data_extraction_goal:
             LOG.warning(
@@ -4328,7 +4446,7 @@ class ForgeAgent:
 
         if step.order + 1 >= max_steps_per_run:
             LOG.info(
-                "Step completed but max steps reached, marking task as failed",
+                "Step completed but max steps reached",
                 step_order=step.order,
                 step_retry=step.retry_index,
                 max_steps=max_steps_per_run,
@@ -4342,6 +4460,8 @@ class ForgeAgent:
                 output=step.output,
                 is_last=True,
             )
+
+            await self._cancel_speculative_step(next_step)
 
             generated_failure_reason = await self.summary_failure_reason_for_max_steps(
                 organization=organization,
@@ -4367,8 +4487,6 @@ class ForgeAgent:
                 failure_category_source="llm" if generated_failure_reason.failure_categories else "code_level",
                 failure_category_path="max_steps",
             )
-
-            await self._cancel_speculative_step(next_step)
 
             await self.update_task(
                 task,

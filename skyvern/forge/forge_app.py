@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
 from fastapi import FastAPI
@@ -58,6 +58,7 @@ class ForgeApp:
     OPENAI_CLIENT: AsyncOpenAI | AsyncAzureOpenAI
     ANTHROPIC_CLIENT: AsyncAnthropic | AsyncAnthropicBedrock
     UI_TARS_CLIENT: AsyncOpenAI | None
+    YUTORI_CLIENT: Any
     AZURE_CLIENT_FACTORY: AzureClientFactory
     SECONDARY_LLM_API_HANDLER: LLMAPIHandler
     SELECT_AGENT_LLM_API_HANDLER: LLMAPIHandler
@@ -141,6 +142,15 @@ def create_forge_app() -> ForgeApp:
             api_key=settings.VOLCENGINE_API_KEY,
             base_url=settings.VOLCENGINE_API_BASE,
             http_client=ForgeAsyncHttpxClientWrapper(),
+        )
+
+    app.YUTORI_CLIENT = None
+    if settings.ENABLE_YUTORI:
+        from yutori import AsyncYutoriClient
+
+        app.YUTORI_CLIENT = AsyncYutoriClient(
+            api_key=settings.YUTORI_API_KEY,
+            base_url=settings.YUTORI_API_BASE,
         )
 
     app.SECONDARY_LLM_API_HANDLER = LLMAPIHandlerFactory.get_llm_api_handler(

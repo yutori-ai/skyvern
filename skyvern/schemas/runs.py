@@ -345,6 +345,7 @@ class RunType(StrEnum):
     openai_cua = "openai_cua"
     anthropic_cua = "anthropic_cua"
     ui_tars = "ui_tars"
+    yutori_navigator = "yutori_navigator"
 
 
 class RunEngine(StrEnum):
@@ -353,10 +354,11 @@ class RunEngine(StrEnum):
     openai_cua = "openai-cua"
     anthropic_cua = "anthropic-cua"
     ui_tars = "ui-tars"
+    yutori_navigator = "yutori-navigator"
 
 
-CUA_ENGINES = [RunEngine.openai_cua, RunEngine.anthropic_cua, RunEngine.ui_tars]
-CUA_RUN_TYPES = [RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars]
+CUA_ENGINES = [RunEngine.openai_cua, RunEngine.anthropic_cua, RunEngine.ui_tars, RunEngine.yutori_navigator]
+CUA_RUN_TYPES = [RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_navigator]
 
 
 class RunStatus(StrEnum):
@@ -657,8 +659,8 @@ class BaseRunResponse(BaseModel):
 
 
 class TaskRunResponse(BaseRunResponse):
-    run_type: Literal[RunType.task_v1, RunType.task_v2, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars] = (
-        Field(description="Types of a task run - task_v1, task_v2, openai_cua, anthropic_cua, ui_tars")
+    run_type: Literal[RunType.task_v1, RunType.task_v2, RunType.openai_cua, RunType.anthropic_cua, RunType.ui_tars, RunType.yutori_navigator] = (
+        Field(description="Types of a task run - task_v1, task_v2, openai_cua, anthropic_cua, ui_tars, yutori_navigator")
     )
     run_request: TaskRunRequest | None = Field(
         default=None, description="The original request parameters used to start this task run"

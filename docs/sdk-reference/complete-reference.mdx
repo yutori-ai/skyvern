@@ -332,7 +332,7 @@ from skyvern.client.errors import (                        # HTTP error subclass
     ConflictError,         # 409
     UnprocessableEntityError,  # 422
 )
-from skyvern.schemas.runs import RunEngine                 # skyvern_v1, skyvern_v2, openai_cua, anthropic_cua, ui_tars
+from skyvern.schemas.runs import RunEngine                 # skyvern_v1, skyvern_v2, openai_cua, anthropic_cua, ui_tars, yutori_navigator
 from skyvern.schemas.run_blocks import CredentialType      # skyvern, bitwarden, onepassword, azure_vault
 ```
 
@@ -862,7 +862,7 @@ print(run.output)
 - `download_files` does not support `wait_for_completion` — poll manually or use webhooks.
 - Only workflow runs with `persist_browser_session=True` produce archives for profile creation.
 - Session archiving is async — profile creation may need a short retry delay after a run completes.
-- `engine` accepts `RunEngine` enum values: `skyvern_v1`, `skyvern_v2`, `openai_cua`, `anthropic_cua`, `ui_tars`.
+- `engine` accepts `RunEngine` enum values: `skyvern_v1`, `skyvern_v2`, `openai_cua`, `anthropic_cua`, `ui_tars`, `yutori_navigator`.
 - `launch_local_browser` only works in local mode (`Skyvern.local()`). Cloud browser methods (`launch_cloud_browser`, `use_cloud_browser`, `connect_to_cloud_browser_session`) require cloud environment.
 - `page.agent` methods always wait for completion — they don't support `wait_for_completion=False`.
 - TypeScript SDK does not support browser control (local or cloud) — use the Python SDK for browser automation.
