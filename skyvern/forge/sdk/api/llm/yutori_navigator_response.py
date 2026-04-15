@@ -228,7 +228,7 @@ def _convert_tool_call(
                 return NullAction(result_data="Scrolled to element", **bp)
             return NullAction(result_data="ERROR: Ref resolution failed for scroll target", **bp)
         direction = args.get("direction", "down")
-        amount = int(args.get("amount", 3)) * 100
+        amount = int(args.get("amount") or 3) * 100
         if direction == "up":
             return ScrollAction(x=x, y=y, scroll_x=0, scroll_y=-amount, **bp)
         if direction == "down":
