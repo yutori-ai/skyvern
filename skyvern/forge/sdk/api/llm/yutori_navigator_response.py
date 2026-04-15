@@ -221,8 +221,15 @@ def _convert_tool_call(
 
     # ---- Scroll ----
     if action_type == YutoriNavigatorActionType.SCROLL:
+        if args.get("ref"):
+            if coord is not None:
+                # GET_ELEMENT_BY_REF_SCRIPT already scrolled the element into view.
+                # Returning a no-op here avoids applying an extra wheel scroll.
+                return NullAction(result_data="Scrolled to element", **bp)
+            return NullAction(result_data="ERROR: Ref resolution failed for scroll target", **bp)
         direction = args.get("direction", "down")
-        amount = int(args.get("amount", 3)) * 100
+        amount_value = args.get("amount")
+        amount = int(3 if amount_value is None else amount_value) * 100
         if direction == "up":
             return ScrollAction(x=x, y=y, scroll_x=0, scroll_y=-amount, **bp)
         if direction == "down":
@@ -255,7 +262,13 @@ def _convert_tool_call(
         return CompleteAction(data_extraction_goal=summary, **bp)
 
     if action_type in (YutoriNavigatorActionType.WAIT, YutoriNavigatorActionType.SLEEP):
-        return NullAction(**bp)
+        duration_value = args.get("duration")
+        duration = max(0.0, min(float(5 if duration_value is None else duration_value), 100.0))
+        return NullAction(
+            sleep_seconds=duration,
+            result_data=f"Waited {duration:g}s",
+            **bp,
+        )
 
     # Legacy extract action
     if action_type == YutoriNavigatorActionType.EXTRACT_CONTENT:

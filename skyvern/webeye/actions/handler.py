@@ -1721,7 +1721,9 @@ async def handle_null_action(
     task: Task,
     step: Step,
 ) -> list[ActionResult]:
-    return [ActionSuccess()]
+    if action.sleep_seconds > 0:
+        await asyncio.sleep(action.sleep_seconds)
+    return [ActionSuccess(data=action.result_data)]
 
 
 @traced()
