@@ -283,6 +283,15 @@ def _convert_tool_call(
 
     if action_type == YutoriNavigatorActionType.EXECUTE_JS:
         source = json.dumps(args.get("text", ""))
-        return ExecuteJsAction(js_code=f"({EXECUTE_JS_SCRIPT})({source})", **bp)
+        js = (
+            "(async function() { "
+            f"var r = await ({EXECUTE_JS_SCRIPT})({source}); "
+            "if (!r) return 'undefined'; "
+            "if (r.success === false) return r.message || 'JavaScript execution failed'; "
+            "if (r.hasResult) return typeof r.result === 'string' ? r.result : JSON.stringify(r.result); "
+            "return 'undefined'; "
+            "})()"
+        )
+        return ExecuteJsAction(js_code=js, **bp)
 
     return None
