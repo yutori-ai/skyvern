@@ -22,6 +22,7 @@ dependencies = [
 server = [
     "azure-storage-blob>=12.26.0",
     "openai>=1.68.2",
+    "yutori>=0.5.0",
     "sqlalchemy[mypy]>=2.0.29,<3",
     "aiohttp>=3.13.5,<4",
     "python-multipart>=0.0.22,<1",
@@ -174,6 +175,8 @@ override-dependencies = [
     "jsonschema>=4.23.0",
     "python-dotenv>=1.0.0",
     "openai>=2.24.0",
+    # yutori SDK pins httpx<0.28 but skyvern's fastmcp needs >=0.28.1
+    "httpx[socks]>=0.26.0",
 ]
 constraint-dependencies = [
     "authlib>=1.6.9",
