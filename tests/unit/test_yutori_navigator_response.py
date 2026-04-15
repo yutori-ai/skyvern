@@ -50,6 +50,21 @@ def test_parse_ref_scroll_returns_null_action_without_extra_scroll() -> None:
     assert action.result_data == "Scrolled to element"
 
 
+def test_parse_ref_scroll_accepts_singular_coordinate_key() -> None:
+    response = NavigatorResponse(
+        tool_calls=[
+            _tool_call("scroll", '{"ref": "ref_123", "coordinate": [500, 250], "direction": "down"}'),
+        ]
+    )
+
+    actions = parse_navigator_response_to_actions(response, viewport_width=1280, viewport_height=800)
+
+    assert len(actions) == 1
+    action = actions[0]
+    assert isinstance(action, NullAction)
+    assert action.result_data == "Scrolled to element"
+
+
 @pytest.mark.asyncio
 async def test_handle_null_action_waits_and_returns_result(monkeypatch: pytest.MonkeyPatch) -> None:
     sleep_mock = AsyncMock(return_value=None)

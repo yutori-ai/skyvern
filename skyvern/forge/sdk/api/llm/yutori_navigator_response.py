@@ -222,7 +222,7 @@ def _convert_tool_call(
     # ---- Scroll ----
     if action_type == YutoriNavigatorActionType.SCROLL:
         if args.get("ref"):
-            if args.get("coordinates"):
+            if coord is not None:
                 # GET_ELEMENT_BY_REF_SCRIPT already scrolled the element into view.
                 # Returning a no-op here avoids applying an extra wheel scroll.
                 return NullAction(result_data="Scrolled to element", **bp)
