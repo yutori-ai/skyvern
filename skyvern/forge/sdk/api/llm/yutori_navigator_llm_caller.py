@@ -170,6 +170,8 @@ class YutoriNavigatorLLMCaller(LLMCaller):
         Flushes any pending tool call results first so the conversation stays valid,
         then appends a user message asking the model to summarize progress.
         """
+        if not self.message_history:
+            self.add_initial_message(screenshot_bytes)
         if self._pending_tool_calls:
             self.flush_pending_tool_results(screenshot_bytes, current_url)
 
