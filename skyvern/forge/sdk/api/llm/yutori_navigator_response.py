@@ -262,18 +262,24 @@ def _convert_tool_call(
         return CompleteAction(data_extraction_goal=summary, **bp)
 
     # ---- Expanded tool set (JS execution) ----
+    # Expanded tool set: each SDK script returns a dict with {success, ...}.
+    # We wrap each to extract the useful content field as a string so the
+    # generic ExecuteJsAction handler returns it cleanly via ActionSuccess(data=...).
     if action_type == YutoriNavigatorActionType.EXTRACT_ELEMENTS:
         filter_type = json.dumps(args.get("filter", "visible"))
-        return ExecuteJsAction(js_code=f"({EXTRACT_ELEMENTS_SCRIPT})({filter_type})", **bp)
+        js = f"(function() {{ var r = ({EXTRACT_ELEMENTS_SCRIPT})({filter_type}); return r && r.pageContent || JSON.stringify(r); }})()"
+        return ExecuteJsAction(js_code=js, **bp)
 
     if action_type == YutoriNavigatorActionType.FIND:
         text = json.dumps(args.get("text", ""))
-        return ExecuteJsAction(js_code=f"({FIND_SCRIPT})({text})", **bp)
+        js = f"(function() {{ var r = ({FIND_SCRIPT})({text}); return r && r.pageContent || JSON.stringify(r); }})()"
+        return ExecuteJsAction(js_code=js, **bp)
 
     if action_type == YutoriNavigatorActionType.SET_ELEMENT_VALUE:
         ref = json.dumps(args.get("ref", ""))
         value = json.dumps(args.get("value", ""))
-        return ExecuteJsAction(js_code=f"({SET_ELEMENT_VALUE_SCRIPT})({ref}, {value})", **bp)
+        js = f"(function() {{ var r = ({SET_ELEMENT_VALUE_SCRIPT})({ref}, {value}); return r && r.message || JSON.stringify(r); }})()"
+        return ExecuteJsAction(js_code=js, **bp)
 
     if action_type == YutoriNavigatorActionType.EXECUTE_JS:
         source = json.dumps(args.get("text", ""))

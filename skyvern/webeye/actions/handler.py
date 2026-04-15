@@ -2465,19 +2465,11 @@ async def handle_execute_js_action(
     import json as _json
 
     result = await page.evaluate(action.js_code)
-
-    if isinstance(result, dict) and "success" in result:
-        if not result.get("success"):
-            return [ActionFailure(exception=Exception(result.get("message") or "JavaScript execution failed"))]
-        if not result.get("hasResult"):
-            return [ActionSuccess(data="undefined")]
-        return [ActionSuccess(data=result.get("result"))]
-
     if result is None:
         return [ActionSuccess(data="undefined")]
-    if isinstance(result, (dict, list)):
-        return [ActionSuccess(data=_json.dumps(result, indent=2))]
-    return [ActionSuccess(data=str(result))]
+    if isinstance(result, str):
+        return [ActionSuccess(data=result)]
+    return [ActionSuccess(data=_json.dumps(result))]
 
 
 ActionHandler.register_action_type(ActionType.SOLVE_CAPTCHA, handle_solve_captcha_action)
